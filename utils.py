@@ -24,8 +24,8 @@ def load_config(config_dir='config'):
         config.read([os.path.join(config_dir, 'defaults.cfg'),
                      os.path.join(config_dir, 'user.cfg')])
         return config
-    except ConfigParser.ParsingError as e:
-        logger.critical("Error parsing configuration : %s" % e)
+    except ConfigParser.ParsingError:
+        logger.exception("Error parsing configuration")
         raise
 
 
@@ -104,6 +104,8 @@ class DataLoader(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_value:
+            logger.error("Transaction rollback",
+                         exc_info=(exc_type, exc_value, traceback))
             self.connection.rollback()
         else:
             self.connection.commit()
@@ -113,7 +115,7 @@ class DataLoader(object):
         self.connection.commit()
         return self.connection.close()
 
-    def load_shp(self, filename, table, drop=False):
+    def load_shp(self, filename, table, drop=False, append=False):
         """Load a shapefile from the directory into a PostGIS table.
 
         This is a Python wrapper for shp2gpsql. shp2pgsql is spawned by
@@ -126,6 +128,8 @@ class DataLoader(object):
             table:    PostGIS table name (optionally schema-qualified).
             drop:     Whether to drop a table that already exists.
                       Defaults to False.
+            append:   Whether to append to an existing table, instead of
+                      creating one. Defaults to False.
         """
         logger.info("Loading table %s from file %s." % (table, filename))
         filepath = os.path.join(self.directory, filename)
@@ -137,23 +141,25 @@ class DataLoader(object):
                     # Drop the existing table.
                     cur.execute('DROP TABLE IF EXISTS %s' % table)
 
-                # Create the new table itself without adding actual data.
-                create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
-                                                 '-s', str(self.srid),
-                                                 filepath, table],
-                                                 stdout=subprocess.PIPE,
-                                                 stderr=subprocess.PIPE)
-                try:
-                    command = ''
-                    for line in create_table.stdout:
-                        if line and not (line.startswith('BEGIN') or
-                                         line.startswith('COMMIT')):
-                            command += line
-                    cur.execute(command)
-                finally:
-                    logf(logging.DEBUG, create_table.stderr)
+                if not append:
+                    # Create the new table itself without adding actual data.
+                    create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
+                                                     '-s', str(self.srid),
+                                                     filepath, table],
+                                                     stdout=subprocess.PIPE,
+                                                     stderr=subprocess.PIPE)
+                    try:
+                        command = ''
+                        for line in create_table.stdout:
+                            if line and not (line.startswith('BEGIN') or
+                                             line.startswith('COMMIT')):
+                                command += line
+                        cur.execute(command)
+                    finally:
+                        logf(logging.DEBUG, create_table.stderr)
+                    create_table.wait()
 
-                # Append data to the newly-created table.
+                # Append data to existing or newly-created table.
                 append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
                                                 '-s', str(self.srid),
                                                 filepath, table],
@@ -167,12 +173,12 @@ class DataLoader(object):
                     cur.copy_expert(line, append_data.stdout)
                 finally:
                     logf(logging.DEBUG, append_data.stderr)
+                append_data.wait()
 
-            # Commit when conversion finished.
-            create_table.wait()
-            append_data.wait()
-            #self.connection.commit()
+            # Commit when finished.
+            self.connection.commit()
 
         except:
+            logger.exception("Transaction rollback")
             self.connection.rollback()
             raise
