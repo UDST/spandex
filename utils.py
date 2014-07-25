@@ -80,8 +80,6 @@ class DataLoader(object):
         if config_dir:
             config = load_config(config_dir)
             db_config = dict(config.items('database'))
-            db_config['user'] = db_config['username']
-            del db_config['username']
 
         # If constructor arguments are not populated, use configuration.
         if not connection:
