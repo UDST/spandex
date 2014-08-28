@@ -52,12 +52,14 @@ def tag(target_table_name, target_field, source_table_name, source_table_field, 
         return target_df
     
 def get_srid(table_name, field):
+    """Returns SRID of specified table/field."""
     try:
         return db_to_df("SELECT FIND_SRID('public', '%s', '%s')" % (table_name, field)).values[0][0]
     except:
         Pass
     
 def srid_equality(target_table_name, source_table_name):
+    """Checks if there are multiple projections between two tables."""
     srids = []
     def check_append_srid(table_name, field_name):
         if db_col_exists(table_name, field_name):
@@ -70,18 +72,22 @@ def srid_equality(target_table_name, source_table_name):
     return False if len(srids[srids>0]) > 1 else True  
     
 def db_col_exists(table_name, column_name):
+    """Tests if column on database table exists"""
     test = db_to_df("SELECT column_name FROM information_schema.columns WHERE table_name='%s' and column_name='%s';"%(table_name,column_name))
     return True if len(test) > 0 else False
 
 def add_integer_field(table_name, field_to_add):
+    """Add integer field to table."""
     exec_sql("alter table %s add %s integer default 0;" % (table_name, field_to_add))
 
 def exec_sql(query):
+    """Executes SQL query."""
     cur = sim.get_injectable('cur')
     conn = sim.get_injectable('conn')
     cur.execute(query)
     conn.commit()
     
 def db_to_df(query):
+    """Executes SQL query and returns DataFrame."""
     conn = sim.get_injectable('conn')
     return sql.read_frame(query, conn)
