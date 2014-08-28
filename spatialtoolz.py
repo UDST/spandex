@@ -93,7 +93,7 @@ def db_to_df(query):
     conn = sim.get_injectable('conn')
     return sql.read_frame(query, conn)
     
-def reproject(target_table, geometry_column='geom', config_dir, new_table=None):
+def reproject(target_table, config_dir, geometry_column='geom' , new_table=None):
     """
     Reprojects target table into the srid specified in the project config
 
@@ -118,11 +118,11 @@ def reproject(target_table, geometry_column='geom', config_dir, new_table=None):
 
     """
     project_srid = str(DataLoader(config_dir).srid)
-    table_srid = str(st.get_srid(target_table, geometry_column))
+    table_srid = str(get_srid(target_table, geometry_column))
     if new_table:
-        st.exec_sql("CREATE TABLE %s as SELECT * FROM %s" % (new_table, target_table))
-        st.exec_sql("SELECT UpdateGeometrySRID('%s', '%s', %s)" % (new_table, geometry_column, project_srid))
-        st.exec_sql("UPDATE %s SET %s = ST_TRANSFORM(ST_SetSRID(%s, %s), %s)" % (new_table, geometry_column, geometry_column, table_srid, project_srid))
+        exec_sql("CREATE TABLE %s as SELECT * FROM %s" % (new_table, target_table))
+        exec_sql("SELECT UpdateGeometrySRID('%s', '%s', %s)" % (new_table, geometry_column, project_srid))
+        exec_sql("UPDATE %s SET %s = ST_TRANSFORM(ST_SetSRID(%s, %s), %s)" % (new_table, geometry_column, geometry_column, table_srid, project_srid))
     else:
-        st.exec_sql("SELECT UpdateGeometrySRID('%s', '%s', %s)" % (target_table, geometry_column, project_srid))
-        st.exec_sql("UPDATE %s SET %s = ST_TRANSFORM(ST_SetSRID(%s, %s), %s)" % (target_table, geometry_column, geometry_column, table_srid, project_srid))
+        exec_sql("SELECT UpdateGeometrySRID('%s', '%s', %s)" % (target_table, geometry_column, project_srid))
+        exec_sql("UPDATE %s SET %s = ST_TRANSFORM(ST_SetSRID(%s, %s), %s)" % (target_table, geometry_column, geometry_column, table_srid, project_srid))
