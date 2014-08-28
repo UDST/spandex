@@ -31,9 +31,7 @@ def tag(target_table_name, target_field, source_table_name, source_table_field, 
         new/updated column.
 
     """
-    
-    if srid_equality(target_table_name, source_table_name) == False:
-        raise Exception('Projections are different')
+    check_srid_equality(target_table_name, source_table_name)
         
     if db_col_exists(target_table_name, target_field) == False:
         add_integer_field(target_table_name, target_field)
@@ -47,10 +45,46 @@ def tag(target_table_name, target_field, source_table_name, source_table_field, 
                                         (target_table_name, target_field, source_table_field, source_table_name, target_table_name))
     
     if target_df:
-        target_df_idx_name = target_df.index.name
-        new_col = db_to_df("select %s, %s from %s" % (target_df_idx_name, target_field, target_table_name)).set_index(target_df_idx_name)[target_field]
-        target_df[target_field] = new_col
-        return target_df
+        return update_df(target_df, target_field, target_table_name)
+        
+        
+def proportion_overlap(target_table_name, overlapping_table_name, target_field, target_df=None):
+    """
+    Calculates proportion overlap between target table's geometry and another table's 
+    geometry. Populates field in target table with proportion overlap value.
+
+    Parameters
+    ----------
+    target_table_name : str
+        Name of table being overlapped.  New field will be added, or existing field updated.
+    overlapping_table_name : str
+        Name of table containing geometry that overlaps with target table's geometry.
+    target_field : str
+        Name of field in target_table to add (if doesn't exist) or update (if exists). This
+        is where proportion overlap value will be stored.
+    target_df : DataFrame, optional
+        DataFrame to update based on the proportion overlap calculation.
+
+    Returns
+    -------
+    None : None
+        Field is added or updated on the target_table in the database, and returns nothing.
+        Unless target_df argument is used, in which case return value is DataFrame with the
+        new/updated column.
+
+    """
+    check_srid_equality(target_table_name, overlapping_table_name)
+
+    if db_col_exists(target_table_name, target_field) == False:
+        add_numeric_field(target_table_name, target_field)
+        
+    calc_area(target_table_name)
+        
+    exec_sql("UPDATE %s SET %s = (SELECT SUM(ST_Area(ST_Intersection(%s.geom, %s.geom))) FROM %s WHERE ST_Intersects(%s.geom, %s.geom)) / %s.calc_area;" % (target_table_name, target_field, target_table_name, overlapping_table_name, overlapping_table_name, target_table_name, overlapping_table_name, target_table_name))
+    
+    if target_df:
+        return update_df(target_df, target_field, target_table_name)
+    
     
 def get_srid(table_name, field):
     """Returns SRID of specified table/field."""
@@ -58,6 +92,7 @@ def get_srid(table_name, field):
         return db_to_df("SELECT FIND_SRID('public', '%s', '%s')" % (table_name, field)).values[0][0]
     except:
         Pass
+    
     
 def srid_equality(target_table_name, source_table_name):
     """Checks if there are multiple projections between two tables."""
@@ -72,15 +107,41 @@ def srid_equality(target_table_name, source_table_name):
     srids = np.unique(srids)
     return False if len(srids[srids>0]) > 1 else True  
     
+    
+def check_srid_equality(table1, table2):
+    if srid_equality(table1, table2) == False:
+        raise Exception('Projections are different')
+    
+    
+def calc_area(table_name):
+    if db_col_exists(table_name, 'calc_area') == False:
+        add_numeric_field(table_name, 'calc_area') 
+        exec_sql("UPDATE %s SET calc_area = ST_Area(%s.geom);" % (table_name, table_name))
+        
+        
+def update_df(df, column_name, db_table_name):
+    df_idx_name = df.index.name
+    new_col = db_to_df("select %s, %s from %s" % (df_idx_name, column_name, db_table_name)).set_index(df_idx_name)[column_name]
+    df[column_name] = new_col
+    return df
+    
+    
 def db_col_exists(table_name, column_name):
     """Tests if column on database table exists"""
     test = db_to_df("SELECT column_name FROM information_schema.columns WHERE table_name='%s' and column_name='%s';"%(table_name,column_name))
     return True if len(test) > 0 else False
 
+    
 def add_integer_field(table_name, field_to_add):
     """Add integer field to table."""
     exec_sql("alter table %s add %s integer default 0;" % (table_name, field_to_add))
+    
+    
+def add_numeric_field(table_name, field_to_add):
+    """Add numeric field to table."""
+    exec_sql("alter table %s add %s numeric default 0.0;" % (table_name, field_to_add))
 
+    
 def exec_sql(query):
     """Executes SQL query."""
     cur = sim.get_injectable('cur')
@@ -88,10 +149,12 @@ def exec_sql(query):
     cur.execute(query)
     conn.commit()
     
+    
 def db_to_df(query):
     """Executes SQL query and returns DataFrame."""
     conn = sim.get_injectable('conn')
     return sql.read_frame(query, conn)
+    
     
 def reproject(target_table, config_dir, geometry_column='geom' , new_table=None):
     """
