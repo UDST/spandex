@@ -180,3 +180,82 @@ class DataLoader(object):
             logger.exception("Transaction rollback")
             self.connection.rollback()
             raise
+            
+            
+def load_shapefile(shp_path, db_table_name, config_dir, srid=None):
+    """
+    Load single shapefile to PostGIS using DataLoader.
+
+    Parameters
+    ----------
+    shp_path : str
+        Path to shapefile.
+    db_table_name : str
+        Name of resulting PostGIS database table.
+    config_dir : str
+        Path to spandex configuration directory
+    srid : int, optional
+        SRID of shapefile, if different from SRID specified in spandex
+        configuration file.
+
+    Returns
+    -------
+    None : None
+        Loads shapefile to the database (returns nothing)
+
+    """
+    with DataLoader(config_dir=config_dir) as loader:
+        if srid:  loader.srid = srid
+        loader.load_shp(shp_path, db_table_name, drop=True)
+
+        
+def load_multiple_shp(shapefiles, data_dir, config_dir):
+    """
+    Load multiple shapefiles to PostGIS according to a given dictionary
+    of shapefile information.
+
+    Parameters
+    ----------
+    shapefiles : dict
+        Dictionary of dictionaries where the top-level key is shapefile category,
+        which also corresponds to the name of the directory within the data_dir 
+        containing this category of shapefiles. The sub-dictionaries are 
+        dictionaries where the keys correspond to database table name and the
+        value is a tuple of the form (shapefile_file_name, SRID).  If SRID is
+        None, then default config SRID is used.
+        
+        Example dictionary
+             {'parcels' :  ##Looks for 'parcels' directory within the data_dir
+                  {'marin':('Marin_2006_CWP.shp', 2872),  ##Looks for 'marin' directory within parcels dir
+                  'napa':('Napa_Parcels.shp', 2226),
+                  },
+              'boundaries' :
+                  {'blocks':('block10_gba.shp', 26910),
+                   'block_groups':('blockgroup10_gba.shp',26910),
+                  },
+             }
+    data_dir : str
+        Path to the input data directory.  This base directory should contain
+        subdirectories corresponding to each shapefile category, which in turn
+        should contain a subdirectory for each shapefile.
+    config_dir : str
+        Path to spandex configuration directory
+
+    Returns
+    -------
+    None : None
+        Loads shapefiles to the database (returns nothing)
+
+    """
+    def subpath(base_dir):
+        def func(shp_table_name, shp_path):
+            input_dir = base_dir
+            return os.path.join(input_dir, shp_table_name, shp_path)
+        return func
+    for shape_category in shapefiles:
+        path_func = subpath(os.path.join(data_dir,shape_category))
+        shp_dict = shapefiles[shape_category]
+        for shp_name in shp_dict:
+            print 'Loading %s.' % shp_name
+            path = path_func(shp_name, shp_dict[shp_name][0])
+            load_shapefile(path, shape_category + '_' + shp_name, config_dir, shp_dict[shp_name][1])
