@@ -276,3 +276,53 @@ def conform_srids(config_dir):
         target_table = geoms.f_table_name[geoms.index==item]
         geom_col = geoms.f_geometry_column[geoms.index==item]
         reproject(target_table[item], config_dir, geometry_column=geom_col[item])
+        
+        
+def load_delimited_file(file_path, table_name, delimiter=',', append=False):
+    """
+    Load multiple shapefiles to PostGIS according to a given dictionary
+    of shapefile information.
+
+    Parameters
+    ----------
+    file_path : str
+        The full path the delimited file. Postgres must have access to directory and file.
+    table_name : str
+        The name given to the table on the database or the table to append to
+    delimiter : str
+        The delimiter symbol used in the input file. Defaults to ','.
+        Other examples include tab delimited '\t' and vertical bar delimited '|'
+    append: boolean
+        Determines whether a new table is created (dropping existing table if exists) or
+        rows are appended to existing table. If append=True, table schemas must be identical.
+
+    Returns
+    -------
+    None : None
+        Loads delimited file to database
+
+    """
+    delimited_file = pd.read_csv(file_path, delimiter=delimiter)
+    dtypes = pd.Series(list(delimited_file.dtypes))
+    dtypes[dtypes=='object'] = 'character varying'
+    dtypes[dtypes=='int64'] = 'integer'
+    dtypes[dtypes=='int32'] = 'integer'
+    dtypes[dtypes=='float64'] = 'numeric'
+    cols = pd.Series(list(delimited_file.columns))
+    cols = cols.str.replace(' ','_')
+    cols = cols.str.replace('\'','')
+    cols = cols.str.replace('\"','')
+    cols = cols.str.replace('\(','')
+    cols = cols.str.replace('\)','')
+    cols = cols.str.replace('\+','')
+    cols = cols.str.replace('\:','')
+    cols = cols.str.replace('\;','')
+    columns = ''
+    for col, tp in zip(list(cols), list(dtypes)):
+        columns = columns + col + ' ' + tp + ','
+    columns = columns[:-1]
+    if not append:
+        exec_sql("DROP TABLE IF EXISTS %s;" % (table_name))
+        exec_sql("CREATE TABLE %s (%s);" % (table_name, columns))
+    exec_sql("SET CLIENT_ENCODING='LATIN1';")
+    exec_sql("COPY %s FROM '%s' DELIMITER '%s' CSV HEADER;" % (table_name, file_path, delimiter))
