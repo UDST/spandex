@@ -91,7 +91,7 @@ def get_srid(table_name, field):
     try:
         return db_to_df("SELECT FIND_SRID('public', '%s', '%s')" % (table_name, field)).values[0][0]
     except:
-        Pass
+        pass
     
     
 def srid_equality(target_table_name, source_table_name):
@@ -254,14 +254,16 @@ def reproject(target_table, config_dir, geometry_column='geom' , new_table=None)
         exec_sql("UPDATE %s SET %s = ST_TRANSFORM(ST_SetSRID(%s, %s), %s)" % (target_table, geometry_column, geometry_column, table_srid, project_srid))
         
         
-def conform_srids(config_dir):
+def conform_srids(config_dir, schema=None):
     """
-    Reprojects all non-conforming geometry columns into project SRID
+    Reprojects all non-conforming geometry columns into project SRID.
 
     Parameters
     ----------
     config_dir : str
         Path to the directory where the project config is stored.
+    schema : str
+        If schema is specified, only SRIDs within specified schema are conformed
     
     Returns
     -------
@@ -269,7 +271,9 @@ def conform_srids(config_dir):
         Nonconforming tables' geometry columns are reprojected to the SRID found in the config file.
 
     """
-    geoms = db_to_df("select f_table_name, f_geometry_column, srid from geometry_columns;")
+    geoms = db_to_df("select f_table_schema, f_table_name, f_geometry_column, srid from geometry_columns;")
+    if schema:
+        geoms = geoms[geoms.f_table_schema == schema]
     project_srid = DataLoader(config_dir).srid
     geoms = geoms[geoms.srid!=project_srid]
     for item in geoms.index:
