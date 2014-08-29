@@ -27,8 +27,8 @@ def tag(target_table_name, target_field, source_table_name, source_table_field, 
     -------
     None : None
         Field is added or updated on the target_table in the database, and returns nothing.
-        Unless target_df argument is used, in which case return value is DataFrame with the
-        new/updated column.
+        Unless target_df argument is used, in which case return value is pandas.DataFrame with 
+        the new/updated column.
 
     """
     check_srid_equality(target_table_name, source_table_name)
@@ -69,8 +69,8 @@ def proportion_overlap(target_table_name, overlapping_table_name, target_field, 
     -------
     None : None
         Field is added or updated on the target_table in the database, and returns nothing.
-        Unless target_df argument is used, in which case return value is DataFrame with the
-        new/updated column.
+        Unless target_df argument is used, in which case return value is pandas.DataFrame 
+        with the new/updated column.
 
     """
     check_srid_equality(target_table_name, overlapping_table_name)
@@ -109,17 +109,80 @@ def srid_equality(target_table_name, source_table_name):
     
     
 def check_srid_equality(table1, table2):
+    """Tests for SRID equality between two tables and raises Exception if unequal"""
     if srid_equality(table1, table2) == False:
         raise Exception('Projections are different')
     
     
 def calc_area(table_name):
+    """Calculates area of geometry using ST_Area, values stored in 'calc_area' field"""
     if db_col_exists(table_name, 'calc_area') == False:
         add_numeric_field(table_name, 'calc_area') 
         exec_sql("UPDATE %s SET calc_area = ST_Area(%s.geom);" % (table_name, table_name))
         
         
+def invalid_geometry_diagnostic(table_name, id_field):
+    """"""
+    """
+    Returns DataFrame with diagnostic information for only records with invalid geometry.
+    Returned columns include record identifier, whether geometry is simple, and reason 
+    for invalidity.
+
+    Parameters
+    ----------
+    table_name : str
+        Name of database table to diagnose.
+    id_field : str
+        Name of unique identifier field in database table.  Can be any field.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Table with all records that have invalid geometry, with diagnostic information.
+
+    """
+    return db_to_df("SELECT * FROM (SELECT %s, ST_IsValid(geom) as valid, ST_IsSimple(geom) as simple,  ST_IsValidReason(geom), geom FROM %s) AS t WHERE NOT(valid);" % (id_field, table_name))
+            
+            
+def duplicate_stacked_geometry_diagnostic(table_name):
+    """
+    Returns DataFrame with all records that have duplicate, stacked geometry.
+
+    Parameters
+    ----------
+    table_name : str
+        Name of database table to diagnose.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Table with all records that have duplicate, stacked geometry.
+
+    """
+    return db_to_df("SELECT * FROM %s where geom in (select geom from %s group by geom having count(*) > 1)" % (table_name, table_name))
+        
+        
 def update_df(df, column_name, db_table_name):
+    """
+    Adds/updates column in DataFrame from database table.  Database table must contain field 
+    with the same name as DataFrame's index (df.index.name).
+
+    Parameters
+    ----------
+    df : DataFrame
+        Table to add column to.
+    column_name : str
+        Name of field in database table to add to DataFrame.  This is also the name of the
+        column to add/update in the DataFrame.
+    db_table_name : str
+        Database table containing field to add/update DataFrame.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Table with new/updated column.
+
+    """
     df_idx_name = df.index.name
     new_col = db_to_df("select %s, %s from %s" % (df_idx_name, column_name, db_table_name)).set_index(df_idx_name)[column_name]
     df[column_name] = new_col
@@ -153,7 +216,7 @@ def exec_sql(query):
 def db_to_df(query):
     """Executes SQL query and returns DataFrame."""
     conn = sim.get_injectable('conn')
-    return sql.read_frame(query, conn)
+    return sql.read_sql(query, conn)
     
     
 def reproject(target_table, config_dir, geometry_column='geom' , new_table=None):
