@@ -284,8 +284,7 @@ def conform_srids(config_dir, schema=None):
         
 def load_delimited_file(file_path, table_name, delimiter=',', append=False):
     """
-    Load multiple shapefiles to PostGIS according to a given dictionary
-    of shapefile information.
+    Load a delimited file to the database.
 
     Parameters
     ----------
