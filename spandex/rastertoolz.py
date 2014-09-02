@@ -1,8 +1,8 @@
 import numpy as np
 import rasterio
 from osgeo import gdal, ogr
-from rasterstats.utils import bbox_to_pixel_offsets, shapely_to_ogr_type, get_features, \
-                   RasterStatsError, raster_extent_as_bounds
+from rasterstats.utils import (bbox_to_pixel_offsets, shapely_to_ogr_type, get_features,
+                               RasterStatsError, raster_extent_as_bounds)
 from shapely.geometry import shape, box, MultiPolygon
 
 
@@ -31,18 +31,18 @@ def to_geotiff(array, src, path_to_tif):
             dst.write_band(1, array.astype(rasterio.uint8))
 
 
-#Modified version of rasterstats function of same name.  Added functionality to
-#return the np array image of each geometry and apply arbitrary function instead
-#of precanned set.  See notebook in the spandex examples dir for example usage.
+# Modified version of rasterstats function of same name.  Added functionality to
+# return the np array image of each geometry and apply arbitrary function instead
+# of precanned set.  See notebook in the spandex examples dir for example usage.
 def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_value=None,
-                 global_src_extent=False, categorical=False, stats=None,
-                 copy_properties=False, all_touched=False, transform=None):
+                global_src_extent=False, categorical=False, stats=None,
+                copy_properties=False, all_touched=False, transform=None):
 
     if not stats:
         if not categorical:
             stats = ['count', 'min', 'max', 'mean', 'std']
             if func:
-              stats.append('func')
+                stats.append('func')
 
     # must have transform arg
     if not transform:
@@ -110,7 +110,7 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
             # we're off the raster completely, no overlap at all
             # so there's no need to even bother trying to calculate
             feature_stats = dict([(s, None) for s in stats])
-            img = {'__fid__':i, 'img':None}
+            img = {'__fid__': i, 'img': None}
         else:
             if not global_src_extent:
                 # use feature's source extent and read directly from source
@@ -120,9 +120,11 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
                 src_array = rb.ReadAsArray(*src_offset)
             else:
                 # derive array from global source extent array
-                # useful *only* when disk IO or raster format inefficiencies are your limiting factor
+                # useful *only* when disk IO or raster format inefficiencies
+                # are your limiting factor
                 # advantage: reads raster data in one pass before loop
-                # disadvantage: large vector extents combined with big rasters need lotsa memory
+                # disadvantage: large vector extents combined with big rasters
+                # need lotsa memory
                 xa = src_offset[0] - global_src_offset[0]
                 ya = src_offset[1] - global_src_offset[1]
                 xb = xa + src_offset[2]
@@ -138,13 +140,18 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
             mem_layer.CreateFeature(ogr_feature)
 
             # Rasterize it
-            rvds = driver.Create('rvds', src_offset[2], src_offset[3], 1, gdal.GDT_Byte)
+            rvds = driver.Create(
+                'rvds', src_offset[2], src_offset[3], 1, gdal.GDT_Byte)
             rvds.SetGeoTransform(new_gt)
 
             if all_touched:
-                gdal.RasterizeLayer(rvds, [1], mem_layer, None, None, burn_values=[1], options = ['ALL_TOUCHED=True'])
+                gdal.RasterizeLayer(
+                    rvds, [1], mem_layer, None, None,
+                    burn_values=[1], options=['ALL_TOUCHED=True'])
             else:
-                gdal.RasterizeLayer(rvds, [1], mem_layer, None, None, burn_values=[1], options = ['ALL_TOUCHED=False'])
+                gdal.RasterizeLayer(
+                    rvds, [1], mem_layer, None, None,
+                    burn_values=[1], options=['ALL_TOUCHED=False'])
             rv_array = rvds.ReadAsArray()
 
             # Mask the source data array with our current feature
@@ -204,7 +211,7 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
                 except KeyError:
                     rmax = float(masked.max())
                 feature_stats['range'] = rmax - rmin
-            img = {'__fid__':i, 'img':masked}
+            img = {'__fid__': i, 'img': masked}
 
         # Use the enumerated id as __fid__
         feature_stats['__fid__'] = i

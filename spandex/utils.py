@@ -145,8 +145,8 @@ class DataLoader(object):
                     create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
                                                      '-s', str(self.srid),
                                                      filepath, table],
-                                                     stdout=subprocess.PIPE,
-                                                     stderr=subprocess.PIPE)
+                                                    stdout=subprocess.PIPE,
+                                                    stderr=subprocess.PIPE)
                     try:
                         command = ''
                         for line in create_table.stdout:
@@ -162,8 +162,8 @@ class DataLoader(object):
                 append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
                                                 '-s', str(self.srid),
                                                 filepath, table],
-                                                stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE)
+                                               stdout=subprocess.PIPE,
+                                               stderr=subprocess.PIPE)
                 try:
                     while True:
                         line = append_data.stdout.readline()
@@ -206,7 +206,8 @@ def load_shapefile(shp_path, db_table_name, config_dir, srid=None):
 
     """
     with DataLoader(config_dir=config_dir) as loader:
-        if srid:  loader.srid = srid
+        if srid:
+            loader.srid = srid
         loader.load_shp(shp_path, db_table_name, drop=True)
 
 
@@ -227,7 +228,8 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
 
         Example dictionary
              {'parcels' :  ##Looks for 'parcels' directory within the data_dir
-                  {'marin':('Marin_2006_CWP.shp', 2872),  ##Looks for 'marin' directory within parcels dir
+                  ##Looks for 'marin' directory within parcels dir
+                  {'marin':('Marin_2006_CWP.shp', 2872),
                   'napa':('Napa_Parcels.shp', 2226),
                   },
               'boundaries' :
@@ -254,9 +256,10 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
             return os.path.join(input_dir, shp_table_name, shp_path)
         return func
     for shape_category in shapefiles:
-        path_func = subpath(os.path.join(data_dir,shape_category))
+        path_func = subpath(os.path.join(data_dir, shape_category))
         shp_dict = shapefiles[shape_category]
         for shp_name in shp_dict:
             print 'Loading %s.' % shp_name
             path = path_func(shp_name, shp_dict[shp_name][0])
-            load_shapefile(path, shape_category + '_' + shp_name, config_dir, shp_dict[shp_name][1])
+            load_shapefile(
+                path, shape_category + '_' + shp_name, config_dir, shp_dict[shp_name][1])
