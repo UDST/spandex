@@ -251,8 +251,8 @@ def reproject(target_table, config_dir, geometry_column='geom' , new_table=None)
     if new_table:
         exec_sql("CREATE TABLE %s as SELECT * FROM %s" % (new_table, target_table))
         update_srid(new_table, geometry_column, table_srid, project_srid)
-        exec_sql("CREATE INDEX %s_%s_gist on %s using gist(%s)" % (new_table, geometry_column, new_table, geometry_column
-        vacuum(new_table)        
+        exec_sql("CREATE INDEX %s_%s_gist on %s using gist(%s)" % (new_table, geometry_column, new_table, geometry_column))
+        vacuum(new_table)
     else:
         update_srid(target_table, geometry_column, table_srid, project_srid)
         conn.set_isolation_level(0)
@@ -262,7 +262,7 @@ def reproject(target_table, config_dir, geometry_column='geom' , new_table=None)
 def vacuum(target_table):
     """vacuums target table, returning stats for indices, etc."""
     conn.set_isolation_level(0)
-    exec_sql("VACUUM ANALYZE %s" % (target_table)
+    exec_sql("VACUUM ANALYZE %s" % (target_table))
         
     
 def conform_srids(config_dir, schema=None):
