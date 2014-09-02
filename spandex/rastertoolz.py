@@ -1,12 +1,11 @@
 import numpy as np
 import rasterio
-from shapely.geometry import shape, box, MultiPolygon
-import numpy as np
 from osgeo import gdal, ogr
 from rasterstats.utils import bbox_to_pixel_offsets, shapely_to_ogr_type, get_features, \
                    RasterStatsError, raster_extent_as_bounds
+from shapely.geometry import shape, box, MultiPolygon
 
-                   
+
 def from_geotiff(path_to_tif):
     with rasterio.drivers(CPL_DEBUG=True):
         with rasterio.open(path_to_tif) as src:
@@ -20,7 +19,7 @@ def from_geotiff(path_to_tif):
 
     return total, src
 
-    
+
 def to_geotiff(array, src, path_to_tif):
         kwargs = src.meta
         kwargs.update(
@@ -30,15 +29,15 @@ def to_geotiff(array, src, path_to_tif):
 
         with rasterio.open(path_to_tif, 'w', **kwargs) as dst:
             dst.write_band(1, array.astype(rasterio.uint8))
-            
-            
-#Modified version of rasterstats function of same name.  Added functionality to 
+
+
+#Modified version of rasterstats function of same name.  Added functionality to
 #return the np array image of each geometry and apply arbitrary function instead
 #of precanned set.  See notebook in the spandex examples dir for example usage.
 def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_value=None,
-                 global_src_extent=False, categorical=False, stats=None, 
+                 global_src_extent=False, categorical=False, stats=None,
                  copy_properties=False, all_touched=False, transform=None):
-                 
+
     if not stats:
         if not categorical:
             stats = ['count', 'min', 'max', 'mean', 'std']
@@ -76,7 +75,7 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
         # convert them into box polygons the size of a raster cell
         buff = rgt[1] / 2.0
         if geom.type == "MultiPoint":
-            geom = MultiPolygon([box(*(pt.buffer(buff).bounds)) 
+            geom = MultiPolygon([box(*(pt.buffer(buff).bounds))
                                 for pt in geom.geoms])
         elif geom.type == 'Point':
             geom = box(*(geom.buffer(buff).bounds))
@@ -141,7 +140,7 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
             # Rasterize it
             rvds = driver.Create('rvds', src_offset[2], src_offset[3], 1, gdal.GDT_Byte)
             rvds.SetGeoTransform(new_gt)
-            
+
             if all_touched:
                 gdal.RasterizeLayer(rvds, [1], mem_layer, None, None, burn_values=[1], options = ['ALL_TOUCHED=True'])
             else:
@@ -159,7 +158,7 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
                 )
             )
 
-            if categorical:  
+            if categorical:
                 feature_stats = dict(pixel_count)
             else:
                 feature_stats = {}
@@ -206,7 +205,7 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
                     rmax = float(masked.max())
                 feature_stats['range'] = rmax - rmin
             img = {'__fid__':i, 'img':masked}
-            
+
         # Use the enumerated id as __fid__
         feature_stats['__fid__'] = i
 

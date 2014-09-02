@@ -2,8 +2,8 @@ import ConfigParser
 import logging
 import os
 import subprocess
-import pandas as pd
 
+import pandas as pd
 import psycopg2
 
 
@@ -181,8 +181,8 @@ class DataLoader(object):
             logger.exception("Transaction rollback")
             self.connection.rollback()
             raise
-            
-            
+
+
 def load_shapefile(shp_path, db_table_name, config_dir, srid=None):
     """
     Load single shapefile to PostGIS using DataLoader.
@@ -209,7 +209,7 @@ def load_shapefile(shp_path, db_table_name, config_dir, srid=None):
         if srid:  loader.srid = srid
         loader.load_shp(shp_path, db_table_name, drop=True)
 
-        
+
 def load_multiple_shp(shapefiles, data_dir, config_dir):
     """
     Load multiple shapefiles to PostGIS according to a given dictionary
@@ -219,12 +219,12 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
     ----------
     shapefiles : dict
         Dictionary of dictionaries where the top-level key is shapefile category,
-        which also corresponds to the name of the directory within the data_dir 
-        containing this category of shapefiles. The sub-dictionaries are 
+        which also corresponds to the name of the directory within the data_dir
+        containing this category of shapefiles. The sub-dictionaries are
         dictionaries where the keys correspond to database table name and the
         value is a tuple of the form (shapefile_file_name, SRID).  If SRID is
         None, then default config SRID is used.
-        
+
         Example dictionary
              {'parcels' :  ##Looks for 'parcels' directory within the data_dir
                   {'marin':('Marin_2006_CWP.shp', 2872),  ##Looks for 'marin' directory within parcels dir
