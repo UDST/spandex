@@ -5,13 +5,15 @@ import subprocess
 
 import psycopg2
 
+from .database import database as db
+
 
 # Set up logging system.
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_dir='config'):
+def load_config(config_dir='../config'):
     """Returns a ConfigParser object.
 
     Configuration is loaded from defaults.cfg and user.cfg in config_dir.
@@ -46,23 +48,20 @@ class DataLoader(object):
         # Load data.
         loader.load_shp('parcel/Alameda.shp', 'staging.alameda')
 
-        # Run SQL command.
-        with loader.connection.cursor() as cur:
+        # Run SQL command and commit.
+        with loader.database.cursor() as cur:
             cur.execute("SELECT DISTINCT luc_desc FROM staging.alameda;")
             rows = cur.fetchall()
 
-        # Commit and close connection.
+        # Close all connection(s).
         loader.close()
 
-    If used in a with statement, the close method is automatically called at
-    the end of the with block.
-
     Methods:
-        close:      Commit and close PostgreSQL connection.
+        close:      Close managed PostgreSQL connection(s).
         load_shp:   Load a shapefile from the directory into a PostGIS table.
 
     Attributes:
-        connection: psycopg2 connection object.
+        database:   PostgreSQL database connection manager class.
         directory:  Path to the directory containing the shapefiles.
         srid:       Spatial Reference System Identifier (SRID).
 
@@ -74,44 +73,38 @@ class DataLoader(object):
 
     """
 
-    def __init__(self, config_dir='config', connection=None, directory=None,
+    def __init__(self, config_dir='../config', database=None, directory=None,
                  srid=None):
-        # If configuration directory is defined, load it.
+        # If configuration directory is defined, load its configuration.
         if config_dir:
             config = load_config(config_dir)
             db_config = dict(config.items('database'))
 
-        # If constructor arguments are not populated, use configuration.
-        if not connection:
-            connection = psycopg2.connect(**db_config)
+        # Define attributes from configuration, unless overridden.
+        if not database:
+            database = db
         if not directory:
             directory = config.get('data', 'directory')
         if not srid:
             srid = config.get('data', 'srid')
 
+        # Create new connection(s) using configuration, unless already
+        # connected.
+        try:
+            database.assert_connected()
+        except psycopg2.DatabaseError:
+            database.connect(**db_config)
+
         # Assign arguments to class attributes.
-        self.connection = connection
+        self.database = database
         if os.path.exists(directory):
             self.directory = directory
         else:
             raise IOError("Directory does not exist: %s" % directory)
         self.srid = int(srid)
 
-    def __enter__(self, *args, **kwargs):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if exc_value:
-            logger.error("Transaction rollback",
-                         exc_info=(exc_type, exc_value, traceback))
-            self.connection.rollback()
-        else:
-            self.connection.commit()
-        self.connection.close()
-
     def close(self):
-        self.connection.commit()
-        return self.connection.close()
+        return self.database.close()
 
     def load_shp(self, filename, table, drop=False, append=False):
         """Load a shapefile from the directory into a PostGIS table.
@@ -132,54 +125,45 @@ class DataLoader(object):
         logger.info("Loading table %s from file %s." % (table, filename))
         filepath = os.path.join(self.directory, filename)
 
-        try:
-            with self.connection.cursor() as cur:
+        with self.database.cursor() as cur:
 
-                if drop:
-                    # Drop the existing table.
-                    cur.execute('DROP TABLE IF EXISTS %s' % table)
+            if drop:
+                # Drop the existing table.
+                cur.execute('DROP TABLE IF EXISTS %s' % table)
 
-                if not append:
-                    # Create the new table itself without adding actual data.
-                    create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
-                                                     '-s', str(self.srid),
-                                                     filepath, table],
-                                                    stdout=subprocess.PIPE,
-                                                    stderr=subprocess.PIPE)
-                    try:
-                        command = ''
-                        for line in create_table.stdout:
-                            if line and not (line.startswith('BEGIN') or
-                                             line.startswith('COMMIT')):
-                                command += line
-                        cur.execute(command)
-                    finally:
-                        logf(logging.DEBUG, create_table.stderr)
-                    create_table.wait()
-
-                # Append data to existing or newly-created table.
-                append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
-                                                '-s', str(self.srid),
-                                                filepath, table],
-                                               stdout=subprocess.PIPE,
-                                               stderr=subprocess.PIPE)
+            if not append:
+                # Create the new table itself without adding actual data.
+                create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
+                                                 '-s', str(self.srid),
+                                                 filepath, table],
+                                                stdout=subprocess.PIPE,
+                                                stderr=subprocess.PIPE)
                 try:
-                    while True:
-                        line = append_data.stdout.readline()
-                        if line.startswith('COPY'):
-                            break
-                    cur.copy_expert(line, append_data.stdout)
+                    command = ''
+                    for line in create_table.stdout:
+                        if line and not (line.startswith('BEGIN') or
+                                         line.startswith('COMMIT')):
+                            command += line
+                    cur.execute(command)
                 finally:
-                    logf(logging.DEBUG, append_data.stderr)
-                append_data.wait()
+                    logf(logging.DEBUG, create_table.stderr)
+                create_table.wait()
 
-            # Commit when finished.
-            self.connection.commit()
-
-        except:
-            logger.exception("Transaction rollback")
-            self.connection.rollback()
-            raise
+            # Append data to existing or newly-created table.
+            append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
+                                            '-s', str(self.srid),
+                                            filepath, table],
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE)
+            try:
+                while True:
+                    line = append_data.stdout.readline()
+                    if line.startswith('COPY'):
+                        break
+                cur.copy_expert(line, append_data.stdout)
+            finally:
+                logf(logging.DEBUG, append_data.stderr)
+            append_data.wait()
 
 
 def load_shapefile(shp_path, db_table_name, config_dir, srid=None):
@@ -204,10 +188,10 @@ def load_shapefile(shp_path, db_table_name, config_dir, srid=None):
         Loads shapefile to the database (returns nothing)
 
     """
-    with DataLoader(config_dir=config_dir) as loader:
-        if srid:
-            loader.srid = srid
-        loader.load_shp(shp_path, db_table_name, drop=True)
+    loader = DataLoader(config_dir=config_dir)
+    if srid:
+        loader.srid = srid
+    loader.load_shp(shp_path, db_table_name, drop=True)
 
 
 def load_multiple_shp(shapefiles, data_dir, config_dir):
