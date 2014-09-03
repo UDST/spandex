@@ -284,13 +284,13 @@ def reproject(target_table, config_dir, geometry_column='geom', new_table=None):
         vacuum(new_table)
     else:
         update_srid(target_table, geometry_column, table_srid, project_srid)
-        conn.set_isolation_level(0)
         vacuum(target_table)
 
 
 def vacuum(target_table):
     """vacuums target table, returning stats for indices, etc."""
-    conn.set_isolation_level(0)
+    with db.connection() as conn:
+        conn.set_isolation_level(0)
     exec_sql("VACUUM ANALYZE %s" % (target_table))
 
 
