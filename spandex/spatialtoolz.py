@@ -10,28 +10,33 @@ from .utils import DataLoader
 def tag(target_table_name, target_field, source_table_name, source_table_field,
         how='point_in_poly', target_df=None):
     """
-    Tags target table with attribute of another table based on spatial relationship.
+    Tags target table with attribute of another table based on
+    spatial relationship.
 
     Parameters
     ----------
     target_table_name : str
-        Name of table to be tagged.  New field will be added, or existing field updated.
+        Name of table to be tagged.  New field will be added, or
+        existing field updated.
     target_field : str
-        Name of field in target_table to add (if doesn't exist) or update (if exists).
+        Name of field in target_table to add (if doesn't exist) or
+        update (if exists).
     source_table_name : str
         Name of table containing information to tag target_table with.
     source_field : str
         Name of field in source_table that contains the information.
     how : str, optional
-        How to relate the two tables spatially.  If not specified, defaults to 'point_in_poly'
+        How to relate the two tables spatially.
+        If not specified, defaults to 'point_in_poly'
     target_df : DataFrame, optional
         DataFrame to update based on the tagging operation.
 
     Returns
     -------
     None : None
-        Field is added or updated on the target_table in the database, and returns nothing.
-        Unless target_df argument is used, in which case return value is pandas.DataFrame with
+        Field is added or updated on the target_table in the database,
+        and returns nothing. Unless target_df argument is used,
+        in which case return value is pandas.DataFrame with
         the new/updated column.
 
     """
@@ -62,28 +67,35 @@ def tag(target_table_name, target_field, source_table_name, source_table_field,
         return update_df(target_df, target_field, target_table_name)
 
 
-def proportion_overlap(target_table_name, overlapping_table_name, target_field, target_df=None):
+def proportion_overlap(
+        target_table_name, overlapping_table_name, target_field,
+        target_df=None):
     """
-    Calculates proportion overlap between target table's geometry and another table's
-    geometry. Populates field in target table with proportion overlap value.
+    Calculates proportion overlap between target table's geometry and another
+    table's geometry. Populates field in target table with proportion
+    overlap value.
 
     Parameters
     ----------
     target_table_name : str
-        Name of table being overlapped.  New field will be added, or existing field updated.
+        Name of table being overlapped.  New field will be added,
+        or existing field updated.
     overlapping_table_name : str
-        Name of table containing geometry that overlaps with target table's geometry.
+        Name of table containing geometry that overlaps with target
+        table's geometry.
     target_field : str
-        Name of field in target_table to add (if doesn't exist) or update (if exists). This
-        is where proportion overlap value will be stored.
+        Name of field in target_table to add (if doesn't exist) or
+        update (if exists). This is where proportion overlap value
+        will be stored.
     target_df : DataFrame, optional
         DataFrame to update based on the proportion overlap calculation.
 
     Returns
     -------
     None : None
-        Field is added or updated on the target_table in the database, and returns nothing.
-        Unless target_df argument is used, in which case return value is pandas.DataFrame
+        Field is added or updated on the target_table in the database,
+        and returns nothing. Unless target_df argument is used,
+        in which case return value is pandas.DataFrame
         with the new/updated column.
 
     """
@@ -134,13 +146,20 @@ def srid_equality(target_table_name, source_table_name):
 
 
 def check_srid_equality(table1, table2):
-    """Tests for SRID equality between two tables and raises Exception if unequal"""
+    """
+    Tests for SRID equality between two tables and raises Exception if unequal.
+
+    """
     if srid_equality(table1, table2) is False:
         raise Exception('Projections are different')
 
 
 def calc_area(table_name):
-    """Calculates area of geometry using ST_Area, values stored in 'calc_area' field"""
+    """
+    Calculates area of geometry using ST_Area, values stored in
+    'calc_area' field.
+
+    """
     if db_col_exists(table_name, 'calc_area') is False:
         add_numeric_field(table_name, 'calc_area')
         exec_sql(
@@ -151,9 +170,9 @@ def calc_area(table_name):
 def invalid_geometry_diagnostic(table_name, id_field):
     """"""
     """
-    Returns DataFrame with diagnostic information for only records with invalid geometry.
-    Returned columns include record identifier, whether geometry is simple, and reason
-    for invalidity.
+    Returns DataFrame with diagnostic information for only records
+    with invalid geometry. Returned columns include record identifier,
+    whether geometry is simple, and reason for invalidity.
 
     Parameters
     ----------
@@ -165,7 +184,8 @@ def invalid_geometry_diagnostic(table_name, id_field):
     Returns
     -------
     df : pandas.DataFrame
-        Table with all records that have invalid geometry, with diagnostic information.
+        Table with all records that have invalid geometry, with
+        diagnostic information.
 
     """
     return db_to_df(
@@ -198,16 +218,17 @@ def duplicate_stacked_geometry_diagnostic(table_name):
 
 def update_df(df, column_name, db_table_name):
     """
-    Adds/updates column in DataFrame from database table.  Database table must contain field
-    with the same name as DataFrame's index (df.index.name).
+    Adds/updates column in DataFrame from database table.
+    Database table must contain field with the same name as
+    DataFrame's index (df.index.name).
 
     Parameters
     ----------
     df : DataFrame
         Table to add column to.
     column_name : str
-        Name of field in database table to add to DataFrame.  This is also the name of the
-        column to add/update in the DataFrame.
+        Name of field in database table to add to DataFrame.
+        This is also the name of the column to add/update in the DataFrame.
     db_table_name : str
         Database table containing field to add/update DataFrame.
 
@@ -263,7 +284,8 @@ def db_to_df(query, params=None):
         return sql.read_sql(query, conn, params=params)
 
 
-def reproject(target_table, config_dir, geometry_column='geom', new_table=None):
+def reproject(
+        target_table, config_dir, geometry_column='geom', new_table=None):
     """
     Reprojects target table into the srid specified in the project config
 
@@ -278,13 +300,15 @@ def reproject(target_table, config_dir, geometry_column='geom', new_table=None):
     source_field : str
         Name of field in source_table that contains the information.
     new_table: str, optional
-        If new_table is specified, a copy of target table is made with name new_table
+        If `new_table` is specified, a copy of target table is made with
+        name `new_table`.
 
     Returns
     -------
-    None : None
-        Target table's geometry column is reprojected to the SRID found in the config file.
-        Function detects current target table SRID and project SRID and converts on the database.
+    None
+        Target table's geometry column is reprojected to the SRID found
+        in the config file. Function detects current target table SRID and
+        project SRID and converts on the database.
 
     """
     project_srid = str(DataLoader(config_dir).srid)
@@ -332,11 +356,12 @@ def conform_srids(config_dir, schema=None):
     config_dir : str
         Path to the directory where the project config is stored.
     schema : str
-        If schema is specified, only SRIDs within specified schema are conformed
+        If schema is specified, only SRIDs within specified schema
+        are conformed
 
     Returns
     -------
-    None : None
+    None
         Nonconforming tables' geometry columns are reprojected to the SRID
         found in the config file.
 
@@ -351,7 +376,8 @@ def conform_srids(config_dir, schema=None):
     for item in geoms.index:
         target_table = geoms.f_table_name[geoms.index == item]
         geom_col = geoms.f_geometry_column[geoms.index == item]
-        reproject(target_table[item], config_dir, geometry_column=geom_col[item])
+        reproject(
+            target_table[item], config_dir, geometry_column=geom_col[item])
 
 
 def load_delimited_file(file_path, table_name, delimiter=',', append=False):
@@ -361,19 +387,22 @@ def load_delimited_file(file_path, table_name, delimiter=',', append=False):
     Parameters
     ----------
     file_path : str
-        The full path the delimited file. Postgres must have access to directory and file.
+        The full path the delimited file. Postgres must have access
+        to directory and file.
     table_name : str
         The name given to the table on the database or the table to append to
     delimiter : str
         The delimiter symbol used in the input file. Defaults to ','.
-        Other examples include tab delimited '\t' and vertical bar delimited '|'
+        Other examples include tab delimited '\t' and
+        vertical bar delimited '|'.
     append: boolean
-        Determines whether a new table is created (dropping existing table if exists) or
-        rows are appended to existing table. If append=True, table schemas must be identical.
+        Determines whether a new table is created (dropping existing table
+        if exists) or rows are appended to existing table.
+        If append=True, table schemas must be identical.
 
     Returns
     -------
-    None : None
+    None
         Loads delimited file to database
 
     """
