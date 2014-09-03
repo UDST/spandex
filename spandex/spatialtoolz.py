@@ -42,14 +42,21 @@ def tag(target_table_name, target_field, source_table_name, source_table_field,
 
     if how == 'point_in_poly':
         if db_col_exists(target_table_name, 'centroid') is True:
-            exec_sql("update %s set %s = b.%s from %s b where st_within(%s.centroid,b.geom)" %
-                     (target_table_name, target_field, source_table_field,
-                      source_table_name, target_table_name))
+            exec_sql(
+                ("update {tname} set {tfield} = b.{sfield} "
+                 "from {sname} b "
+                 "where st_within({tname}.centroid, b.geom)"
+                 ).format(
+                    tname=target_table_name, tfield=target_field,
+                    sfield=source_table_field, sname=source_table_name))
         else:
             exec_sql(
-                "update %s set %s = b.%s from %s b where st_within(ST_centroid(%s.geom),b.geom)" %
-                (target_table_name, target_field, source_table_field,
-                 source_table_name, target_table_name))
+                ("update {tname} set {tfield} = b.{sfield} "
+                 "from {sname} b "
+                 "where st_within(ST_centroid({tname}.geom), b.geom)"
+                 ).format(
+                    tname=target_table_name, tfield=target_field,
+                    sfield=source_table_field, sname=source_table_name))
 
     if target_df:
         return update_df(target_df, target_field, target_table_name)
@@ -88,11 +95,13 @@ def proportion_overlap(target_table_name, overlapping_table_name, target_field, 
     calc_area(target_table_name)
 
     exec_sql(
-        ("UPDATE %s SET %s = (SELECT SUM(ST_Area(ST_Intersection(%s.geom, %s.geom))) "
-         "FROM %s WHERE ST_Intersects(%s.geom, %s.geom)) / %s.calc_area;") %
-        (target_table_name, target_field, target_table_name,
-         overlapping_table_name, overlapping_table_name, target_table_name,
-         overlapping_table_name, target_table_name))
+        ("UPDATE {tname} "
+         "SET {tfield} = (SELECT SUM(ST_Area(ST_Intersection({tname}.geom, {oname}.geom))) "
+         "FROM {oname} "
+         "WHERE ST_Intersects({tname}.geom, {oname}.geom)) / {tname}.calc_area;"
+         ).format(
+            tname=target_table_name, tfield=target_field,
+            oname=overlapping_table_name))
 
     if target_df:
         return update_df(target_df, target_field, target_table_name)
@@ -101,8 +110,9 @@ def proportion_overlap(target_table_name, overlapping_table_name, target_field, 
 def get_srid(table_name, field):
     """Returns SRID of specified table/field."""
     try:
-        return db_to_df("SELECT FIND_SRID('public', '%s', '%s')" %
-                        (table_name, field)).values[0][0]
+        return db_to_df(
+            "SELECT FIND_SRID('public', '{tname}', '{field}')".format(
+                tname=table_name, field=field)).values[0][0]
     except:
         pass
 
@@ -114,6 +124,7 @@ def srid_equality(target_table_name, source_table_name):
     def check_append_srid(table_name, field_name):
         if db_col_exists(table_name, field_name):
             srids.append(get_srid(table_name, field_name))
+
     check_append_srid(target_table_name, 'geom')
     check_append_srid(source_table_name, 'geom')
     check_append_srid(target_table_name, 'centroid')
@@ -132,7 +143,9 @@ def calc_area(table_name):
     """Calculates area of geometry using ST_Area, values stored in 'calc_area' field"""
     if db_col_exists(table_name, 'calc_area') is False:
         add_numeric_field(table_name, 'calc_area')
-        exec_sql("UPDATE %s SET calc_area = ST_Area(%s.geom);" % (table_name, table_name))
+        exec_sql(
+            "UPDATE {tname} SET calc_area = ST_Area({tname}.geom);".format(
+                tname=table_name))
 
 
 def invalid_geometry_diagnostic(table_name, id_field):
@@ -157,9 +170,9 @@ def invalid_geometry_diagnostic(table_name, id_field):
     """
     return db_to_df(
         ("SELECT * FROM ("
-         "SELECT %s, ST_IsValid(geom) as valid, "
-         "ST_IsSimple(geom) as simple,  ST_IsValidReason(geom), geom FROM %s"
-         ") AS t WHERE NOT(valid);") % (id_field, table_name))
+         "SELECT {field}, ST_IsValid(geom) as valid, "
+         "ST_IsSimple(geom) as simple,  ST_IsValidReason(geom), geom FROM {tname}"
+         ") AS t WHERE NOT(valid);").format(field=id_field, tname=table_name))
 
 
 def duplicate_stacked_geometry_diagnostic(table_name):
@@ -178,9 +191,9 @@ def duplicate_stacked_geometry_diagnostic(table_name):
 
     """
     return db_to_df(
-        ("SELECT * FROM %s "
-         "where geom in (select geom from %s group by geom having count(*) > 1)") %
-        (table_name, table_name))
+        ("SELECT * FROM {tname} "
+         "where geom in (select geom from {tname} "
+         "group by geom having count(*) > 1)").format(tname=table_name))
 
 
 def update_df(df, column_name, db_table_name):
@@ -206,7 +219,8 @@ def update_df(df, column_name, db_table_name):
     """
     df_idx_name = df.index.name
     new_col = db_to_df(
-        "select %s, %s from %s" % (df_idx_name, column_name, db_table_name)
+        "select {idx}, {col} from {tname}".format(
+            idx=df_idx_name, col=column_name, tname=db_table_name)
         ).set_index(df_idx_name)[column_name]
     df[column_name] = new_col
     return df
@@ -217,30 +231,36 @@ def db_col_exists(table_name, column_name):
     test = db_to_df(
         ("SELECT column_name "
          "FROM information_schema.columns "
-         "WHERE table_name='%s' and column_name='%s';") % (table_name, column_name))
+         "WHERE table_name='{tname}' and column_name='{col}';").format(
+            tname=table_name, col=column_name))
+
     return True if len(test) > 0 else False
 
 
 def add_integer_field(table_name, field_to_add):
     """Add integer field to table."""
-    exec_sql("alter table %s add %s integer default 0;" % (table_name, field_to_add))
+    exec_sql(
+        "alter table {tname} add {field} integer default 0;".format(
+            tname=table_name, field=field_to_add))
 
 
 def add_numeric_field(table_name, field_to_add):
     """Add numeric field to table."""
-    exec_sql("alter table %s add %s numeric default 0.0;" % (table_name, field_to_add))
+    exec_sql(
+        "alter table {tname} add {field} numeric default 0.0;".format(
+            tname=table_name, field=field_to_add))
 
 
-def exec_sql(query):
+def exec_sql(query, params=None):
     """Executes SQL query."""
     with db.cursor() as cur:
-        cur.execute(query)
+        cur.execute(query, params)
 
 
-def db_to_df(query):
+def db_to_df(query, params=None):
     """Executes SQL query and returns DataFrame."""
     with db.connection() as conn:
-        return sql.read_sql(query, conn)
+        return sql.read_sql(query, conn, params=params)
 
 
 def reproject(target_table, config_dir, geometry_column='geom', new_table=None):
@@ -271,16 +291,25 @@ def reproject(target_table, config_dir, geometry_column='geom', new_table=None):
     table_srid = str(get_srid(target_table, geometry_column))
 
     def update_srid(target_table, geometry_column, table_srid, project_srid):
-        exec_sql("SELECT UpdateGeometrySRID('%s', '%s', %s)" % (
-            target_table, geometry_column, project_srid))
-        exec_sql("UPDATE %s SET %s = ST_TRANSFORM(ST_SetSRID(%s, %s), %s)" % (
-            target_table, geometry_column, geometry_column, table_srid, project_srid))
+        exec_sql(
+            "SELECT UpdateGeometrySRID('{table}', '{col}', {srid})".format(
+                table=target_table, col=geometry_column, srid=project_srid))
+        exec_sql(
+            ("UPDATE {table} "
+             "SET {col} = ST_TRANSFORM(ST_SetSRID({col}, {tsrid}), {psrid})"
+             ).format(
+                 table=target_table, col=geometry_column, tsrid=table_srid,
+                 psrid=project_srid))
 
     if new_table:
-        exec_sql("CREATE TABLE %s as SELECT * FROM %s" % (new_table, target_table))
+        exec_sql("CREATE TABLE {ntable} as SELECT * FROM {ttable}".format(
+            ntable=new_table, ttable=target_table))
         update_srid(new_table, geometry_column, table_srid, project_srid)
-        exec_sql("CREATE INDEX %s_%s_gist on %s using gist(%s)" % (
-            new_table, geometry_column, new_table, geometry_column))
+        exec_sql(
+            ("CREATE INDEX {ntable}_{col}_gist on "
+             "{ntable} using gist({col})"
+             ).format(
+                 ntable=new_table, col=geometry_column))
         vacuum(new_table)
     else:
         update_srid(target_table, geometry_column, table_srid, project_srid)
@@ -291,7 +320,7 @@ def vacuum(target_table):
     """vacuums target table, returning stats for indices, etc."""
     with db.connection() as conn:
         conn.set_isolation_level(0)
-    exec_sql("VACUUM ANALYZE %s" % (target_table))
+    exec_sql("VACUUM ANALYZE {table}".format(table=target_table))
 
 
 def conform_srids(config_dir, schema=None):
@@ -368,8 +397,9 @@ def load_delimited_file(file_path, table_name, delimiter=',', append=False):
         columns = columns + col + ' ' + tp + ','
     columns = columns[:-1]
     if not append:
-        exec_sql("DROP TABLE IF EXISTS %s;" % (table_name))
-        exec_sql("CREATE TABLE %s (%s);" % (table_name, columns))
+        exec_sql("DROP TABLE IF EXISTS {table};".format(table=table_name))
+        exec_sql("CREATE TABLE {table} ({cols});".format(
+            table=table_name, cols=columns))
     exec_sql("SET CLIENT_ENCODING='LATIN1';")
-    exec_sql("COPY %s FROM '%s' DELIMITER '%s' CSV HEADER;" % (
-        table_name, file_path, delimiter))
+    exec_sql("COPY {table} FROM '{file}' DELIMITER '{del}' CSV HEADER;".format(
+        table=table_name, file=file_path, del=delimiter))
