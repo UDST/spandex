@@ -430,5 +430,6 @@ def load_delimited_file(file_path, table_name, delimiter=',', append=False):
         exec_sql("CREATE TABLE {table} ({cols});".format(
             table=table_name, cols=columns))
     exec_sql("SET CLIENT_ENCODING='LATIN1';")
-    exec_sql("COPY {table} FROM '{file}' DELIMITER '{del}' CSV HEADER;".format(
-        table=table_name, file=file_path, del=delimiter))
+    exec_sql(
+        "COPY {table} FROM '{file}' DELIMITER '{delim}' CSV HEADER;".format(
+            table=table_name, file=file_path, delim=delimiter))
