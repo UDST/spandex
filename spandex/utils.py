@@ -63,7 +63,7 @@ class DataLoader(object):
     Attributes:
         database:   PostgreSQL database connection manager class.
         directory:  Path to the directory containing the shapefiles.
-        srid:       Spatial Reference System Identifier (SRID).
+        srid:       Default Spatial Reference System Identifier (SRID).
 
     Constructor arguments:
         config_dir: Path to configuration directory containing default.cfg
@@ -106,7 +106,7 @@ class DataLoader(object):
     def close(self):
         return self.database.close()
 
-    def load_shp(self, filename, table, drop=False, append=False):
+    def load_shp(self, filename, table, srid=None, drop=False, append=False):
         """Load a shapefile from the directory into a PostGIS table.
 
         This is a Python wrapper for shp2gpsql. shp2pgsql is spawned by
@@ -117,6 +117,8 @@ class DataLoader(object):
         Args:
             filename: Shapefile, relative to the data directory.
             table:    PostGIS table name (optionally schema-qualified).
+            srid:     Spatial Reference System Identifier (SRID), if different
+                      from data default.
             drop:     Whether to drop a table that already exists.
                       Defaults to False.
             append:   Whether to append to an existing table, instead of
@@ -124,6 +126,10 @@ class DataLoader(object):
         """
         logger.info("Loading table %s from file %s." % (table, filename))
         filepath = os.path.join(self.directory, filename)
+
+        # Use default SRID if not defined.
+        if not srid:
+            srid = self.srid
 
         with self.database.cursor() as cur:
 
@@ -134,7 +140,7 @@ class DataLoader(object):
             if not append:
                 # Create the new table itself without adding actual data.
                 create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
-                                                 '-s', str(self.srid),
+                                                 '-s', str(srid),
                                                  filepath, table],
                                                 stdout=subprocess.PIPE,
                                                 stderr=subprocess.PIPE)
@@ -151,7 +157,7 @@ class DataLoader(object):
 
             # Append data to existing or newly-created table.
             append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
-                                            '-s', str(self.srid),
+                                            '-s', str(srid),
                                             filepath, table],
                                            stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE)
@@ -164,34 +170,6 @@ class DataLoader(object):
             finally:
                 logf(logging.DEBUG, append_data.stderr)
             append_data.wait()
-
-
-def load_shapefile(shp_path, db_table_name, config_dir, srid=None):
-    """
-    Load single shapefile to PostGIS using DataLoader.
-
-    Parameters
-    ----------
-    shp_path : str
-        Path to shapefile.
-    db_table_name : str
-        Name of resulting PostGIS database table.
-    config_dir : str
-        Path to spandex configuration directory
-    srid : int, optional
-        SRID of shapefile, if different from SRID specified in spandex
-        configuration file.
-
-    Returns
-    -------
-    None : None
-        Loads shapefile to the database (returns nothing)
-
-    """
-    loader = DataLoader(config_dir=config_dir)
-    if srid:
-        loader.srid = srid
-    loader.load_shp(shp_path, db_table_name, drop=True)
 
 
 def load_multiple_shp(shapefiles, data_dir, config_dir):
@@ -238,11 +216,15 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
             input_dir = base_dir
             return os.path.join(input_dir, shp_table_name, shp_path)
         return func
+
+    loader = DataLoader(config_dir=config_dir, directory=data_dir)
+
     for shape_category in shapefiles:
         path_func = subpath(os.path.join(data_dir, shape_category))
         shp_dict = shapefiles[shape_category]
         for shp_name in shp_dict:
             print 'Loading %s.' % shp_name
             path = path_func(shp_name, shp_dict[shp_name][0])
-            load_shapefile(
-                path, shape_category + '_' + shp_name, config_dir, shp_dict[shp_name][1])
+            loader.load_shp(filename=path,
+                table=shape_category + '_' + shp_name,
+                srid=shp_dict[shp_name][1], drop=True)
