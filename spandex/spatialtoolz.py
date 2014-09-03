@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import pandas.io.sql as sql
-import psycopg2
 
 from .database import database as db
 from .utils import DataLoader

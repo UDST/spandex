@@ -2,7 +2,7 @@ import numpy as np
 import rasterio
 from osgeo import gdal, ogr
 from rasterstats.utils import (bbox_to_pixel_offsets, shapely_to_ogr_type, get_features,
-                               RasterStatsError, raster_extent_as_bounds)
+                               raster_extent_as_bounds)
 from shapely.geometry import shape, box, MultiPolygon
 
 
