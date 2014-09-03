@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pandas.io.sql as sql
 import psycopg2
-import urbansim.sim.simulation as sim
 
+from .database import database as db
 from .utils import DataLoader
 
 
@@ -233,16 +233,14 @@ def add_numeric_field(table_name, field_to_add):
 
 def exec_sql(query):
     """Executes SQL query."""
-    cur = sim.get_injectable('cur')
-    conn = sim.get_injectable('conn')
-    cur.execute(query)
-    conn.commit()
+    with db.cursor() as cur:
+        cur.execute(query)
 
 
 def db_to_df(query):
     """Executes SQL query and returns DataFrame."""
-    conn = sim.get_injectable('conn')
-    return sql.read_sql(query, conn)
+    with db.connection() as conn:
+        return sql.read_sql(query, conn)
 
 
 def reproject(target_table, config_dir, geometry_column='geom', new_table=None):
