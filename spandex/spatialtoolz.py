@@ -281,8 +281,8 @@ def db_to_df(query, params=None):
         return sql.read_sql(query, conn, params=params)
 
 
-def reproject(
-        target_table, config_dir, geometry_column='geom', new_table=None):
+def reproject(target_table, geometry_column='geom', new_table=None,
+              config_filename=None):
     """
     Reprojects target table into the srid specified in the project config
 
@@ -290,13 +290,13 @@ def reproject(
     ----------
     target_table: str
         Name of table to reproject.  Default is in-place reprojection.
-    config_dir : str
-        Path to the directory where the project config is stored.
     geometry_column : str, optional
         Name of the geometry column in the target table. Default is 'geom'.
     new_table: str, optional
         If `new_table` is specified, a copy of target table is made with
         name `new_table`.
+    config_filename : str, optional
+        Path to additional configuration file.
 
     Returns
     -------
@@ -306,7 +306,7 @@ def reproject(
         project SRID and converts on the database.
 
     """
-    project_srid = str(DataLoader(config_dir).srid)
+    project_srid = str(DataLoader(config_filename).srid)
     table_srid = str(get_srid(target_table, geometry_column))
 
     def update_srid(target_table, geometry_column, table_srid, project_srid):
@@ -342,17 +342,17 @@ def vacuum(target_table):
     exec_sql("VACUUM ANALYZE {table}".format(table=target_table))
 
 
-def conform_srids(config_dir, schema=None):
+def conform_srids(schema=None, config_filename=None):
     """
     Reprojects all non-conforming geometry columns into project SRID.
 
     Parameters
     ----------
-    config_dir : str
-        Path to the directory where the project config is stored.
     schema : str, optional
         If schema is specified, only SRIDs within specified schema
         are conformed.
+    config_filename : str, optional
+        Path to additional configuration file.
 
     Returns
     -------
@@ -366,13 +366,13 @@ def conform_srids(config_dir, schema=None):
         "from geometry_columns;")
     if schema:
         geoms = geoms[geoms.f_table_schema == schema]
-    project_srid = DataLoader(config_dir).srid
+    project_srid = DataLoader(config_filename).srid
     geoms = geoms[geoms.srid != project_srid]
     for item in geoms.index:
         target_table = geoms.f_table_name[geoms.index == item]
         geom_col = geoms.f_geometry_column[geoms.index == item]
-        reproject(
-            target_table[item], config_dir, geometry_column=geom_col[item])
+        reproject(target_table[item], geometry_column=geom_col[item],
+                  config_filename=config_filename)
 
 
 def load_delimited_file(file_path, table_name, delimiter=',', append=False):
