@@ -172,7 +172,7 @@ class DataLoader(object):
             append_data.wait()
 
 
-def load_multiple_shp(shapefiles, data_dir, config_dir):
+def load_multiple_shp(shapefiles, config_dir):
     """
     Load multiple shapefiles to PostGIS according to a given dictionary
     of shapefile information.
@@ -198,12 +198,11 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
                    'block_groups':('blockgroup10_gba.shp',26910),
                   },
              }
-    data_dir : str
-        Path to the input data directory.  This base directory should contain
+    config_dir : str
+        Path to spandex configuration directory. Configuration should specify
+        the input data directory (data_dir).  The data_dir should contain
         subdirectories corresponding to each shapefile category, which in turn
         should contain a subdirectory for each shapefile.
-    config_dir : str
-        Path to spandex configuration directory
 
     Returns
     -------
@@ -217,10 +216,10 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
             return os.path.join(input_dir, shp_table_name, shp_path)
         return func
 
-    loader = DataLoader(config_dir=config_dir, directory=data_dir)
+    loader = DataLoader(config_dir=config_dir)
 
     for shape_category in shapefiles:
-        path_func = subpath(os.path.join(data_dir, shape_category))
+        path_func = subpath(shape_category)
         shp_dict = shapefiles[shape_category]
         for shp_name in shp_dict:
             print 'Loading %s.' % shp_name
