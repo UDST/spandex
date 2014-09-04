@@ -15,20 +15,19 @@ def tag(target_table_name, target_field, source_table_name, source_table_field,
     Parameters
     ----------
     target_table_name : str
-        Name of table to be tagged.  New field will be added, or
-        existing field updated.
+        Name of target table to be tagged.
     target_field : str
-        Name of field in target_table to add (if doesn't exist) or
-        update (if exists).
+        Name of field in target table to add (if doesn't exist)
+        or update (if exists).
     source_table_name : str
-        Name of table containing information to tag target_table with.
-    source_field : str
-        Name of field in source_table that contains the information.
+        Name of source table containing information to tag target table with.
+    source_table_field : str
+        Name of field in source table that contains the information.
     how : str, optional
         How to relate the two tables spatially.
         If not specified, defaults to 'point_in_poly'
     target_df : DataFrame, optional
-        DataFrame to update based on the tagging operation.
+        DataFrame to return a tagged copy of.
 
     Returns
     -------
@@ -77,17 +76,16 @@ def proportion_overlap(
     Parameters
     ----------
     target_table_name : str
-        Name of table being overlapped.  New field will be added,
-        or existing field updated.
+        Name of target table being overlapped.
     overlapping_table_name : str
         Name of table containing geometry that overlaps with target
         table's geometry.
     target_field : str
-        Name of field in target_table to add (if doesn't exist) or
+        Name of field in target table to add (if doesn't exist) or
         update (if exists). This is where proportion overlap value
         will be stored.
     target_df : DataFrame, optional
-        DataFrame to update based on the proportion overlap calculation.
+        DataFrame to return a copy of with proportion overlap calculation.
 
     Returns
     -------
@@ -292,12 +290,10 @@ def reproject(
     ----------
     target_table: str
         Name of table to reproject.  Default is in-place reprojection.
-    geometry_column : str
-        Name of the geometry column in the target table. Default is 'geom'.
     config_dir : str
         Path to the directory where the project config is stored.
-    source_field : str
-        Name of field in source_table that contains the information.
+    geometry_column : str, optional
+        Name of the geometry column in the target table. Default is 'geom'.
     new_table: str, optional
         If `new_table` is specified, a copy of target table is made with
         name `new_table`.
@@ -354,9 +350,9 @@ def conform_srids(config_dir, schema=None):
     ----------
     config_dir : str
         Path to the directory where the project config is stored.
-    schema : str
+    schema : str, optional
         If schema is specified, only SRIDs within specified schema
-        are conformed
+        are conformed.
 
     Returns
     -------
@@ -386,15 +382,14 @@ def load_delimited_file(file_path, table_name, delimiter=',', append=False):
     Parameters
     ----------
     file_path : str
-        The full path the delimited file. Postgres must have access
-        to directory and file.
+        The full path to the delimited file.
     table_name : str
-        The name given to the table on the database or the table to append to
-    delimiter : str
+        The name given to the table on the database or the table to append to.
+    delimiter : str, optional
         The delimiter symbol used in the input file. Defaults to ','.
         Other examples include tab delimited '\t' and
         vertical bar delimited '|'.
-    append: boolean
+    append: boolean, optional
         Determines whether a new table is created (dropping existing table
         if exists) or rows are appended to existing table.
         If append=True, table schemas must be identical.
