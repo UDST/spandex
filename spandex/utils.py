@@ -243,6 +243,10 @@ class DataLoader(object):
         """
         filepath = os.path.join(self.directory, filename)
 
+        # Make sure that shapefile exists and is readable.
+        with open(filepath):
+            pass
+
         # If SRID not provided, try to identify from projection information
         # before falling back to default SRID.
         if not srid:
