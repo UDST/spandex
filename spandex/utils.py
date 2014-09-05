@@ -79,6 +79,7 @@ class DataLoader(object):
 
     Methods:
         close:           Close managed PostgreSQL connection(s).
+        get_encoding:    Identify shapefile attribute encoding.
         get_srid:        Identify shapefile EPSG SRID.
         load_shp:        Load a shapefile into a PostGIS table.
 
@@ -131,6 +132,41 @@ class DataLoader(object):
         """Close managed PostgreSQL connection(s)."""
         return self.database.close()
 
+    def get_encoding(self, filename):
+        """Identify shapefile attribute table encoding.
+
+        Use encoding specified by cpg or cst file, before falling back to
+        LATIN1.
+
+        Args:
+            filename: Shapefile, relative to the data directory.
+
+        Returns:
+            encoding: Character encoding (str).
+
+        """
+        # Read encoding from shapefile cpg and cst file.
+        filepath = os.path.join(self.directory, filename)
+        encoding = None
+        for extension in ['.cpg', '.cst']:
+            encoding_filepath = os.path.splitext(filepath)[0] + extension
+            try:
+                with open(encoding_filepath) as encoding_file:
+                    encoding = encoding_file.read().strip()
+                logger.debug("%s file reported %s encoding: %s"
+                             % (extension, encoding, filename))
+                break
+            except IOError:
+                continue
+
+        if not encoding:
+            # No encoding found. Fall back to LATIN1.
+            encoding = "LATIN1"
+            logger.debug("Assuming %s attribute encoding: %s"
+                         % (encoding, filename))
+
+        return encoding
+
     def get_srid(self, filename):
         """Identify shapefile EPSG SRID using GDAL and prj2EPSG API.
 
@@ -181,7 +217,8 @@ class DataLoader(object):
         # Unable to identify SRID.
         logger.warn("Unable to identify SRID: %s" % filename)
 
-    def load_shp(self, filename, table, srid=None, drop=False, append=False):
+    def load_shp(self, filename, table, srid=None, encoding=None,
+                 drop=False, append=False):
         """Load a shapefile from the directory into a PostGIS table.
 
         This is a Python wrapper for shp2gpsql. shp2pgsql is spawned by
@@ -195,6 +232,9 @@ class DataLoader(object):
             srid:     Spatial Reference System Identifier (SRID).
                       If None, attempt to identify SRID from projection
                       information before falling back to default.
+            encoding: Shapefile attribute table encoding.
+                      If None, attempt to identify encoding from cpg or cst
+                      file before falling back to default.
             drop:     Whether to drop a table that already exists.
                       Defaults to False.
             append:   Whether to append to an existing table, instead of
@@ -212,8 +252,13 @@ class DataLoader(object):
                             % (self.srid, filename))
                 srid = self.srid
 
-        logger.info("Loading table %s (SRID: %s) from file %s."
-                    % (table, srid, filename))
+        # If encoding not provided, try to identify from cpg or cst file
+        # before falling back to default encoding.
+        if not encoding:
+            encoding = self.get_encoding(filename)
+
+        logger.info("Loading table %s (SRID: %s) from file %s (encoding: %s)."
+                    % (table, srid, filename, encoding))
         with self.database.cursor() as cur:
 
             if drop:
@@ -224,6 +269,7 @@ class DataLoader(object):
                 # Create the new table itself without adding actual data.
                 create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
                                                  '-s', str(srid),
+                                                 '-W', encoding,
                                                  filepath, table],
                                                 stdout=subprocess.PIPE,
                                                 stderr=subprocess.PIPE)
@@ -235,12 +281,13 @@ class DataLoader(object):
                             command += line
                     cur.execute(command)
                 finally:
-                    logf(logging.DEBUG, create_table.stderr)
+                    logf(logging.WARN, create_table.stderr)
                 create_table.wait()
 
             # Append data to existing or newly-created table.
             append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
                                             '-s', str(srid),
+                                            '-W', encoding,
                                             filepath, table],
                                            stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE)
