@@ -116,6 +116,7 @@ class DataLoader(object):
         self.srid = int(srid)
 
     def close(self):
+        """Close managed PostgreSQL connection(s)."""
         return self.database.close()
 
     def load_shp(self, filename, table, srid=None, drop=False, append=False):
