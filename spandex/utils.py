@@ -13,22 +13,32 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_dir='../config'):
+def load_config(config_filename=None):
     """Returns a ConfigParser object.
 
-    Configuration is loaded from defaults.cfg and user.cfg in config_dir.
+    Configuration is loaded from these filenames, in increasing precedence:
+
+      - ~/.spandex/user.cfg
+      - SPANDEX_CFG environment variable
+      - config_filename argument, if provided
+
+    If a file cannot be opened, it will be ignored. If none of the filenames
+    can be opened, the ConfigParser object will be empty.
 
     """
+    # Build list of configuration filenames.
+    config_filenames = [os.path.expanduser('~/.spandex/user.cfg')]
+    config_filename_env = os.environ.get('SPANDEX_CFG')
+    if config_filename_env:
+        config_filenames.append(config_filename_env)
+    if config_filename:
+        config_filenames.append(config_filename)
+
     # Load configuration using ConfigParser.
-    logger.debug("Loading configuration from %s" % config_dir)
+    logger.debug("Loading configuration from %s" % config_filenames)
     config = ConfigParser.RawConfigParser()
-    try:
-        config.read([os.path.join(config_dir, 'defaults.cfg'),
-                     os.path.join(config_dir, 'user.cfg')])
-        return config
-    except ConfigParser.ParsingError:
-        logger.exception("Error parsing configuration")
-        raise
+    config.read(config_filenames)
+    return config
 
 
 def logf(level, f):
@@ -57,28 +67,29 @@ class DataLoader(object):
         loader.close()
 
     Methods:
-        close:      Close managed PostgreSQL connection(s).
-        load_shp:   Load a shapefile from the directory into a PostGIS table.
+        close:           Close managed PostgreSQL connection(s).
+        load_shp:        Load a shapefile into a PostGIS table.
 
     Attributes:
-        database:   PostgreSQL database connection manager class.
-        directory:  Path to the directory containing the shapefiles.
-        srid:       Default Spatial Reference System Identifier (SRID).
+        database:        PostgreSQL database connection manager class.
+        directory:       Path to the directory containing the shapefiles.
+        srid:            Default Spatial Reference System Identifier (SRID).
+
+    Attributes can be passed as additional constructor arguments and override
+    configuration.
 
     Constructor arguments:
-        config_dir: Path to configuration directory containing default.cfg
-                    and/or user.cfg. If None, attributes must be passed as
-                    additional constructor arguments. Otherwise, passed
-                    attributes override configuration.
+        config_filename: Path to additional configuration file.
+                         If None, configuration must be provided in default
+                         locations, or attributes must be passed as
+                         constructor arguments in place of configuration.
 
     """
 
-    def __init__(self, config_dir='../config', database=None, directory=None,
+    def __init__(self, config_filename=None, database=None, directory=None,
                  srid=None):
-        # If configuration directory is defined, load its configuration.
-        if config_dir:
-            config = load_config(config_dir)
-            db_config = dict(config.items('database'))
+        # Attempt to load configuration.
+        config = load_config(config_filename)
 
         # Define attributes from configuration, unless overridden.
         if not database:
@@ -93,6 +104,7 @@ class DataLoader(object):
         try:
             database.assert_connected()
         except psycopg2.DatabaseError:
+            db_config = dict(config.items('database'))
             database.connect(**db_config)
 
         # Assign arguments to class attributes.
@@ -172,7 +184,7 @@ class DataLoader(object):
             append_data.wait()
 
 
-def load_multiple_shp(shapefiles, data_dir, config_dir):
+def load_multiple_shp(shapefiles, config_filename=None):
     """
     Load multiple shapefiles to PostGIS according to a given dictionary
     of shapefile information.
@@ -198,12 +210,13 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
                    'block_groups':('blockgroup10_gba.shp',26910),
                   },
              }
-    data_dir : str
-        Path to the input data directory.  This base directory should contain
-        subdirectories corresponding to each shapefile category, which in turn
-        should contain a subdirectory for each shapefile.
-    config_dir : str
-        Path to spandex configuration directory
+    config_filename : str, optional
+        Path to additional configuration file.
+        If None, configuration must be provided in default locations.
+        Configuration should specify the input data directory (data_dir).
+        The data_dir should contain subdirectories corresponding to each
+        shapefile category, which in turn should contain a subdirectory
+        for each shapefile.
 
     Returns
     -------
@@ -217,10 +230,10 @@ def load_multiple_shp(shapefiles, data_dir, config_dir):
             return os.path.join(input_dir, shp_table_name, shp_path)
         return func
 
-    loader = DataLoader(config_dir=config_dir, directory=data_dir)
+    loader = DataLoader(config_filename)
 
     for shape_category in shapefiles:
-        path_func = subpath(os.path.join(data_dir, shape_category))
+        path_func = subpath(shape_category)
         shp_dict = shapefiles[shape_category]
         for shp_name in shp_dict:
             print 'Loading %s.' % shp_name
