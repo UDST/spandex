@@ -1,8 +1,12 @@
 import ConfigParser
+import json
 import logging
 import os
 import subprocess
+from urllib import urlencode
+from urllib2 import urlopen
 
+from osgeo import osr
 import psycopg2
 
 from .database import database as db
@@ -68,6 +72,7 @@ class DataLoader(object):
 
     Methods:
         close:           Close managed PostgreSQL connection(s).
+        get_srid:        Identify shapefile EPSG SRID.
         load_shp:        Load a shapefile into a PostGIS table.
 
     Attributes:
@@ -119,6 +124,56 @@ class DataLoader(object):
         """Close managed PostgreSQL connection(s)."""
         return self.database.close()
 
+    def get_srid(self, filename):
+        """Identify shapefile EPSG SRID using GDAL and prj2EPSG API.
+
+        Try to identify the SRID of a shapefile by reading the
+        projection information of the prj file and matching it to an
+        EPSG SRID. Try GDAL and prj2EPSG API in order before returning
+        None if a match was not found.
+
+        Args:
+            filename: Shapefile, relative to the data directory.
+
+        Returns:
+            srid: SRID, if identified, otherwise None.
+
+        """
+        # Read projection information from shapefile prj file.
+        filepath = os.path.join(self.directory, filename)
+        prj_filepath = os.path.splitext(filepath)[0] + '.prj'
+        try:
+            with open(prj_filepath) as prj_file:
+                wkt = prj_file.read()
+        except IOError:
+            logger.warn("Unable to open projection information: %s"
+                        % filename)
+            return
+
+        # Attempt to identify EPSG SRID using GDAL.
+        sr = osr.SpatialReference()
+        sr.ImportFromESRI([wkt])
+        res = sr.AutoIdentifyEPSG()
+        if res == 0:
+            # Successfully identified SRID.
+            srid = int(sr.GetAuthorityCode(None))
+            logger.debug("GDAL returned SRID %s: %s" % (srid, filename))
+            return srid
+
+        # Try querying prj2EPSG API.
+        params = urlencode({'terms': wkt, 'mode': 'wkt'})
+        resp = urlopen('http://prj2epsg.org/search.json?' + params)
+        data = json.loads(resp.read())
+        if data['exact']:
+            # Successfully identified SRID.
+            srid = int(data['codes'][0]['code'])
+            logger.debug("prj2EPSG API returned SRID %s: %s"
+                        % (srid, filename))
+            return srid
+
+        # Unable to identify SRID.
+        logger.warn("Unable to identify SRID: %s" % filename)
+
     def load_shp(self, filename, table, srid=None, drop=False, append=False):
         """Load a shapefile from the directory into a PostGIS table.
 
@@ -130,20 +185,28 @@ class DataLoader(object):
         Args:
             filename: Shapefile, relative to the data directory.
             table:    PostGIS table name (optionally schema-qualified).
-            srid:     Spatial Reference System Identifier (SRID), if different
-                      from data default.
+            srid:     Spatial Reference System Identifier (SRID).
+                      If None, attempt to identify SRID from projection
+                      information before falling back to default.
             drop:     Whether to drop a table that already exists.
                       Defaults to False.
             append:   Whether to append to an existing table, instead of
                       creating one. Defaults to False.
+
         """
-        logger.info("Loading table %s from file %s." % (table, filename))
         filepath = os.path.join(self.directory, filename)
 
-        # Use default SRID if not defined.
+        # If SRID not provided, try to identify from projection information
+        # before falling back to default SRID.
         if not srid:
-            srid = self.srid
+            srid = self.get_srid(filename)
+            if not srid:
+                logger.warn("Falling back to default SRID %s: %s"
+                            % (self.srid, filename))
+                srid = self.srid
 
+        logger.info("Loading table %s (SRID: %s) from file %s."
+                    % (table, srid, filename))
         with self.database.cursor() as cur:
 
             if drop:
