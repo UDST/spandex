@@ -48,8 +48,15 @@ def load_config(config_filename=None):
 def logf(level, f):
     """Log each line of a file-like object at the specified severity level."""
     for line in f:
+        line = line.strip()
         if line:
-            logger.log(level, line.strip())
+            if (line.startswith("Shapefile type: ") or
+                line.startswith("Postgis type: ")):
+                # Send usual shp2pgsql stderr messages to debug log.
+                logger.debug(line)
+            else:
+                # Otherwise, stderr message may be important.
+                logger.log(level, line)
 
 
 class DataLoader(object):
@@ -244,7 +251,7 @@ class DataLoader(object):
                         break
                 cur.copy_expert(line, append_data.stdout)
             finally:
-                logf(logging.DEBUG, append_data.stderr)
+                logf(logging.WARN, append_data.stderr)
             append_data.wait()
 
 
