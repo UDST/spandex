@@ -82,6 +82,7 @@ class DataLoader(object):
         get_encoding:    Identify shapefile attribute encoding.
         get_srid:        Identify shapefile EPSG SRID.
         load_shp:        Load a shapefile into a PostGIS table.
+        load_shp_map:    Load multiple shapefiles into PostGIS tables.
 
     Attributes:
         database:        PostgreSQL database connection manager class.
@@ -304,6 +305,26 @@ class DataLoader(object):
             finally:
                 logf(logging.WARN, append_data.stderr)
             append_data.wait()
+
+    def load_shp_map(self, mapping):
+        """Load multiple shapefiles by mapping tables to filenames or kwargs.
+
+        The shapefile dictionary should map each database table name to:
+
+            - a shapefile filename to load, or
+            - dict-like keyword arguments to pass to the load_shp method,
+              other than the table name.
+
+        By default, existing tables will be dropped (drop=True).
+
+        """
+        for (table, value) in mapping.items():
+            if isinstance(value, basestring):
+                self.load_shp(filename=value, table=table, drop=True)
+            else:
+                if 'drop' not in value:
+                    value['drop'] = True
+                self.load_shp(table=table, **value)
 
 
 def load_multiple_shp(shapefiles, config_filename=None):
