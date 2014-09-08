@@ -108,7 +108,7 @@ class DataLoader(object):
         # Attempt to load configuration.
         config = load_config(config_filename)
 
-        # Define attributes from configuration, unless overridden.
+        # Define arguments from configuration, unless overridden.
         if not database:
             database = db
         if not directory:
@@ -124,7 +124,7 @@ class DataLoader(object):
             db_config = dict(config.items('database'))
             database.connect(**db_config)
 
-        # Assign arguments to class attributes.
+        # Assign arguments to attributes.
         self.database = database
         if os.path.exists(directory):
             self.directory = directory
