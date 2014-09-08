@@ -1,8 +1,12 @@
 import ConfigParser
+import json
 import logging
 import os
 import subprocess
+from urllib import urlencode
+from urllib2 import urlopen
 
+from osgeo import osr
 import psycopg2
 
 from .database import database as db
@@ -44,8 +48,15 @@ def load_config(config_filename=None):
 def logf(level, f):
     """Log each line of a file-like object at the specified severity level."""
     for line in f:
+        line = line.strip()
         if line:
-            logger.log(level, line.strip())
+            if (line.startswith("Shapefile type: ") or
+                line.startswith("Postgis type: ")):
+                # Send usual shp2pgsql stderr messages to debug log.
+                logger.debug(line)
+            else:
+                # Otherwise, stderr message may be important.
+                logger.log(level, line)
 
 
 class DataLoader(object):
@@ -68,7 +79,10 @@ class DataLoader(object):
 
     Methods:
         close:           Close managed PostgreSQL connection(s).
+        get_encoding:    Identify shapefile attribute encoding.
+        get_srid:        Identify shapefile EPSG SRID.
         load_shp:        Load a shapefile into a PostGIS table.
+        load_shp_map:    Load multiple shapefiles into PostGIS tables.
 
     Attributes:
         database:        PostgreSQL database connection manager class.
@@ -116,9 +130,96 @@ class DataLoader(object):
         self.srid = int(srid)
 
     def close(self):
+        """Close managed PostgreSQL connection(s)."""
         return self.database.close()
 
-    def load_shp(self, filename, table, srid=None, drop=False, append=False):
+    def get_encoding(self, filename):
+        """Identify shapefile attribute table encoding.
+
+        Use encoding specified by cpg or cst file, before falling back to
+        LATIN1.
+
+        Args:
+            filename: Shapefile, relative to the data directory.
+
+        Returns:
+            encoding: Character encoding (str).
+
+        """
+        # Read encoding from shapefile cpg and cst file.
+        filepath = os.path.join(self.directory, filename)
+        encoding = None
+        for extension in ['.cpg', '.cst']:
+            encoding_filepath = os.path.splitext(filepath)[0] + extension
+            try:
+                with open(encoding_filepath) as encoding_file:
+                    encoding = encoding_file.read().strip()
+                logger.debug("%s file reported %s encoding: %s"
+                             % (extension, encoding, filename))
+                break
+            except IOError:
+                continue
+
+        if not encoding:
+            # No encoding found. Fall back to LATIN1.
+            encoding = "LATIN1"
+            logger.debug("Assuming %s attribute encoding: %s"
+                         % (encoding, filename))
+
+        return encoding
+
+    def get_srid(self, filename):
+        """Identify shapefile EPSG SRID using GDAL and prj2EPSG API.
+
+        Try to identify the SRID of a shapefile by reading the
+        projection information of the prj file and matching it to an
+        EPSG SRID. Try GDAL and prj2EPSG API in order before returning
+        None if a match was not found.
+
+        Args:
+            filename: Shapefile, relative to the data directory.
+
+        Returns:
+            srid: SRID, if identified, otherwise None.
+
+        """
+        # Read projection information from shapefile prj file.
+        filepath = os.path.join(self.directory, filename)
+        prj_filepath = os.path.splitext(filepath)[0] + '.prj'
+        try:
+            with open(prj_filepath) as prj_file:
+                wkt = prj_file.read()
+        except IOError:
+            logger.warn("Unable to open projection information: %s"
+                        % filename)
+            return
+
+        # Attempt to identify EPSG SRID using GDAL.
+        sr = osr.SpatialReference()
+        sr.ImportFromESRI([wkt])
+        res = sr.AutoIdentifyEPSG()
+        if res == 0:
+            # Successfully identified SRID.
+            srid = int(sr.GetAuthorityCode(None))
+            logger.debug("GDAL returned SRID %s: %s" % (srid, filename))
+            return srid
+
+        # Try querying prj2EPSG API.
+        params = urlencode({'terms': wkt, 'mode': 'wkt'})
+        resp = urlopen('http://prj2epsg.org/search.json?' + params)
+        data = json.loads(resp.read())
+        if data['exact']:
+            # Successfully identified SRID.
+            srid = int(data['codes'][0]['code'])
+            logger.debug("prj2EPSG API returned SRID %s: %s"
+                        % (srid, filename))
+            return srid
+
+        # Unable to identify SRID.
+        logger.warn("Unable to identify SRID: %s" % filename)
+
+    def load_shp(self, filename, table, srid=None, encoding=None,
+                 drop=False, append=False):
         """Load a shapefile from the directory into a PostGIS table.
 
         This is a Python wrapper for shp2gpsql. shp2pgsql is spawned by
@@ -129,20 +230,40 @@ class DataLoader(object):
         Args:
             filename: Shapefile, relative to the data directory.
             table:    PostGIS table name (optionally schema-qualified).
-            srid:     Spatial Reference System Identifier (SRID), if different
-                      from data default.
+            srid:     Spatial Reference System Identifier (SRID).
+                      If None, attempt to identify SRID from projection
+                      information before falling back to default.
+            encoding: Shapefile attribute table encoding.
+                      If None, attempt to identify encoding from cpg or cst
+                      file before falling back to default.
             drop:     Whether to drop a table that already exists.
                       Defaults to False.
             append:   Whether to append to an existing table, instead of
                       creating one. Defaults to False.
+
         """
-        logger.info("Loading table %s from file %s." % (table, filename))
         filepath = os.path.join(self.directory, filename)
 
-        # Use default SRID if not defined.
-        if not srid:
-            srid = self.srid
+        # Make sure that shapefile exists and is readable.
+        with open(filepath):
+            pass
 
+        # If SRID not provided, try to identify from projection information
+        # before falling back to default SRID.
+        if not srid:
+            srid = self.get_srid(filename)
+            if not srid:
+                logger.warn("Falling back to default SRID %s: %s"
+                            % (self.srid, filename))
+                srid = self.srid
+
+        # If encoding not provided, try to identify from cpg or cst file
+        # before falling back to default encoding.
+        if not encoding:
+            encoding = self.get_encoding(filename)
+
+        logger.info("Loading table %s (SRID: %s) from file %s (encoding: %s)."
+                    % (table, srid, filename, encoding))
         with self.database.cursor() as cur:
 
             if drop:
@@ -153,6 +274,7 @@ class DataLoader(object):
                 # Create the new table itself without adding actual data.
                 create_table = subprocess.Popen(['shp2pgsql', '-p', '-I',
                                                  '-s', str(srid),
+                                                 '-W', encoding,
                                                  filepath, table],
                                                 stdout=subprocess.PIPE,
                                                 stderr=subprocess.PIPE)
@@ -164,12 +286,13 @@ class DataLoader(object):
                             command += line
                     cur.execute(command)
                 finally:
-                    logf(logging.DEBUG, create_table.stderr)
+                    logf(logging.WARN, create_table.stderr)
                 create_table.wait()
 
             # Append data to existing or newly-created table.
             append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
                                             '-s', str(srid),
+                                            '-W', encoding,
                                             filepath, table],
                                            stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE)
@@ -180,8 +303,28 @@ class DataLoader(object):
                         break
                 cur.copy_expert(line, append_data.stdout)
             finally:
-                logf(logging.DEBUG, append_data.stderr)
+                logf(logging.WARN, append_data.stderr)
             append_data.wait()
+
+    def load_shp_map(self, mapping):
+        """Load multiple shapefiles by mapping tables to filenames or kwargs.
+
+        The shapefile dictionary should map each database table name to:
+
+            - a shapefile filename to load, or
+            - dict-like keyword arguments to pass to the load_shp method,
+              other than the table name.
+
+        By default, existing tables will be dropped (drop=True).
+
+        """
+        for (table, value) in mapping.items():
+            if isinstance(value, basestring):
+                self.load_shp(filename=value, table=table, drop=True)
+            else:
+                if 'drop' not in value:
+                    value['drop'] = True
+                self.load_shp(table=table, **value)
 
 
 def load_multiple_shp(shapefiles, config_filename=None):
