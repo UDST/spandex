@@ -448,13 +448,9 @@ def load_multiple_delimited_files(files, config_filename=None):
         Example dictionary
              {'parcels' :  ##Looks for 'parcels' directory within the data_dir
                   ##Looks for 'marin' directory within parcels dir
-                  {'marin':('Marin_2006_CWP.shp', 2872),
-                  'napa':('Napa_Parcels.shp', 2226),
-                  },
-              'boundaries' :
-                  {'blocks':('block10_gba.shp', 26910),
-                   'block_groups':('blockgroup10_gba.shp',26910),
-                  },
+                  {'alameda':('alameda_parcel_info.txt', 'alameda_pcl_info', '\t'),
+                  'napa':('napa_parcel_info.csv', 'napa_pcl_info', ','),
+                  }
              }
     config_filename : str, optional
         Path to additional configuration file.
@@ -467,7 +463,7 @@ def load_multiple_delimited_files(files, config_filename=None):
     Returns
     -------
     None : None
-        Loads shapefiles to the database (returns nothing)
+        Loads delimited files to the database (returns nothing)
 
     """
     def subpath(base_dir):
