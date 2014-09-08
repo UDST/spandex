@@ -66,13 +66,17 @@ class DataLoader(object):
 
         loader = DataLoader()
 
-        # Load data.
+        # Load shapefile.
         loader.load_shp('parcel/Alameda.shp', 'staging.alameda')
 
-        # Run SQL command and commit.
+        # Load multiple shapefiles.
+        loader.load_shp_map({'staging.alameda': 'parcel/Alameda.shp'})
+
+        # Run SQL command.
         with loader.database.cursor() as cur:
             cur.execute("SELECT DISTINCT luc_desc FROM staging.alameda;")
-            rows = cur.fetchall()
+            for desc in cur:
+                print(desc)
 
         # Close all connection(s).
         loader.close()
@@ -99,7 +103,6 @@ class DataLoader(object):
                          constructor arguments in place of configuration.
 
     """
-
     def __init__(self, config_filename=None, database=None, directory=None,
                  srid=None):
         # Attempt to load configuration.
