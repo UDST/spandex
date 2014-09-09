@@ -60,7 +60,7 @@ def logf(level, f):
 
 
 class DataLoader(object):
-    """Data loader class with support for importing shapefiles.
+    """Data loader class with support for shapefiles and GeoAlchemy.
 
     Some example usage:
 
@@ -77,6 +77,15 @@ class DataLoader(object):
             cur.execute("SELECT DISTINCT luc_desc FROM staging.alameda;")
             for desc in cur:
                 print(desc)
+
+        # Run ORM command.
+        session = loader.database.session
+        alameda = loader.database.tables.staging.alameda
+        for desc in session.query(alameda.luc_desc).distinct():
+            print(desc)
+
+        # Refresh ORM if schema was modified.
+        loader.database.refresh()
 
         # Close all connection(s).
         loader.close()
@@ -308,6 +317,9 @@ class DataLoader(object):
             finally:
                 logf(logging.WARN, append_data.stderr)
             append_data.wait()
+
+        # Refresh ORM.
+        self.database.refresh()
 
     def load_shp_map(self, mapping):
         """Load multiple shapefiles by mapping tables to filenames or kwargs.
