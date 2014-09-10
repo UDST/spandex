@@ -1,10 +1,17 @@
+import logging
+import os
+
 import numpy as np
 import pandas as pd
 import pandas.io.sql as sql
-import os
 
 from .database import database as db
 from .utils import DataLoader
+
+
+# Set up logging system.
+logging.basicConfig()
+logger = logging.getLogger(__name__)
 
 
 def tag(target_table_name, target_field, source_table_name, source_table_field,
