@@ -14,8 +14,8 @@ class database(object):
     The class is meant to be used only as a class, never as an instance.
 
     Objects:
-        tables:  GeoAlchemy database table objects, namespaced by schema.
-        session: GeoAlchemy session manager.
+        tables :  GeoAlchemy database table objects, namespaced by schema.
+        session : GeoAlchemy session manager.
 
     """
     tables = None
