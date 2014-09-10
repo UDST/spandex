@@ -48,7 +48,12 @@ class database(object):
         """
         Refresh ORM and reload reflected tables from database schema.
 
-        Run refresh after modifying database schema to find new tables/columns.
+        Run refresh after modifying database schema to find new tables,
+        columns, and other schema changes.
+
+        To update all references to the table and column ORM classes, reassign
+        class attributes and delete removed attributes. If the class itself
+        was reassigned, assignments (references) to the class would be stale.
 
         """
         # Close existing session.
@@ -61,8 +66,9 @@ class database(object):
         cls.session = Session()
 
         # Reflect tables in all PostgreSQL schemas.
-        cls.tables = type('tables', (),
-                          {'__doc__': "Reflected GeoAlchemy tables."})
+        if not cls.tables:
+            cls.tables = type('tables', (),
+                              {'__doc__': "Reflected GeoAlchemy tables."})
         with cls.cursor() as cur:
             # Select list of PostgreSQL schemas.
             cur.execute("SELECT nspname FROM pg_namespace;")
@@ -70,20 +76,56 @@ class database(object):
                 schema_name = row[0]
                 if (not schema_name.startswith('pg_') and
                     schema_name != 'information_schema'):
-                    # Assign each schema as attribute of tables and reflect.
-                    schema = type(str(schema_name), (),
-                                  {'__doc__': "Reflected GeoAlchemy schema."})
-                    setattr(cls.tables, schema_name, schema)
-                    cls._model.metadata.reflect(schema=schema_name)
+                    # Reflect and assign each schema as attribute of tables.
+                    cls._model.metadata.reflect(schema=schema_name,
+                                                extend_existing=True,
+                                                autoload_replace=True)
+                    if not hasattr(cls.tables, schema_name):
+                        schema = type(str(schema_name), (),
+                                      {'__doc__':
+                                       "Reflected GeoAlchemy schema."})
+                        setattr(cls.tables, schema_name, schema)
 
-        # Dynamically map all tables to classes.
-        for (name, table) in cls._model.metadata.tables.items():
+        # Dynamically map tables to classes. Update existing table and column
+        # classes, which may be referenced, by reassigning their attributes.
+        for (name, t) in cls._model.metadata.tables.items():
             schema_name, table_name = name.split('.')
             schema = getattr(cls.tables, schema_name)
-            table = type(str(table_name), (cls._model,),
-                         {'__table__': table,
+
+            # Create new table class.
+            table = type(str(name), (cls._model,),
+                         {'__table__': t,
                           '__doc__': "Reflected GeoAlchemy table."})
-            setattr(schema, table_name, table)
+
+            if hasattr(schema, table_name):
+                # Table class exists. Update by reassigning attributes.
+                old_table = getattr(schema, table_name)
+                for (key, value) in table.__dict__.items():
+                    if hasattr(old_table, key):
+                        old_table_attr = getattr(old_table, key)
+                        if hasattr(old_table_attr, '__dict__'):
+                            # Table class attribute is itself an object, like
+                            # a column class, which may be referenced. Update
+                            # by reassigning existing object attributes to
+                            # those from object in the new table.
+                            for (subkey, subvalue) in value.__dict__.items():
+                                setattr(old_table_attr, subkey, subvalue)
+                            # Delete removed object attributes.
+                            for subkey in list(old_table_attr.__dict__):
+                                if subkey not in value.__dict__:
+                                    delattr(old_table_attr, subkey)
+                    else:
+                        # Reassign existing table class attribute to
+                        # attribute from the new table class.
+                        setattr(old_table, key, value)
+                # Delete removed table class attributes.
+                for key in list(old_table.__dict__):
+                    if key not in table.__dict__:
+                        delattr(old_table, key)
+            else:
+                # Table class does not already exist. Set the new table class
+                # as a schema attribute.
+                setattr(schema, table_name, table)
 
     @classmethod
     def close(cls):
