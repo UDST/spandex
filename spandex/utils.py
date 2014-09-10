@@ -91,6 +91,7 @@ class DataLoader(object):
         loader.close()
 
     Methods:
+        duplicate:       Duplicate a PostgreSQL table, including indexes.
         close:           Close managed PostgreSQL connection(s).
         get_encoding:    Identify shapefile attribute encoding.
         get_srid:        Identify shapefile EPSG SRID.
@@ -140,6 +141,41 @@ class DataLoader(object):
         else:
             raise IOError("Directory does not exist: %s" % directory)
         self.srid = int(srid)
+
+    def duplicate(self, table, new_table_name, schema_name='public'):
+        """
+        Duplicate a PostgreSQL table, including indexes and constraints.
+
+        Parameters
+        ----------
+        table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+            Table ORM class to duplicate.
+        new_table_name : str
+            Name of new table.
+        schema_name : str, optional
+            Name of schema to contain the new table. Default is 'public'.
+
+        Returns
+        -------
+        new_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+            Duplicated ORM table class.
+
+        """
+        # Copy schema including constraints and indexes, then insert values.
+        # This may be inefficient, unfortunately.
+        t = table.__table__
+        with db.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE {nschema}.{ntable}
+                    (LIKE {oschema}.{otable} INCLUDING ALL);
+                INSERT INTO {nschema}.{ntable}
+                    SELECT * FROM {oschema}.{otable};
+            """.format(nschema=schema_name, ntable=new_table_name,
+                       oschema=t.schema, otable=t.name))
+
+        # Refresh ORM and return table class.
+        db.refresh()
+        return getattr(getattr(db.tables, schema_name), new_table_name)
 
     def close(self):
         """Close managed PostgreSQL connection(s)."""
