@@ -1,9 +1,10 @@
 import logging
 import os
 
-import numpy as np
+from geoalchemy2 import Geometry
 import pandas as pd
 import pandas.io.sql as sql
+from sqlalchemy import func
 
 from .database import database as db
 from .utils import DataLoader
@@ -73,103 +74,112 @@ def tag(target_table_name, target_field, source_table_name, source_table_field,
         return update_df(target_df, target_field, target_table_name)
 
 
-def proportion_overlap(
-        target_table_name, overlapping_table_name, target_field,
-        target_df=None):
+def proportion_overlap(target_table, over_table, column_name, df=None):
     """
     Calculates proportion overlap between target table's geometry and another
-    table's geometry. Populates field in target table with proportion
+    table's geometry. Populates column in target table with proportion
     overlap value.
 
     Parameters
     ----------
-    target_table_name : str
-        Name of target table being overlapped.
-    overlapping_table_name : str
-        Name of table containing geometry that overlaps with target
-        table's geometry.
-    target_field : str
-        Name of field in target table to add (if doesn't exist) or
-        update (if exists). This is where proportion overlap value
+    target_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Target table ORM class containing geometry to overlap.
+    over_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Table ORM class containing overlapping geometry.
+    column_name : str
+        Name of column in target table to add (if doesn't exist) or
+        update (if exists). This is where the proportion overlap value
         will be stored.
-    target_df : DataFrame, optional
+    df : pandas.DataFrame, optional
         DataFrame to return a copy of with proportion overlap calculation.
 
     Returns
     -------
-    None : None
-        Field is added or updated on the target_table in the database,
-        and returns nothing. Unless target_df argument is used,
-        in which case return value is pandas.DataFrame
-        with the new/updated column.
+    None
+        However, if df argument is provided, pandas.DataFrame with the
+        new or updated column is returned.
 
     """
-    check_srid_equality(target_table_name, overlapping_table_name)
+    # Table projections must be equal.
+    assert srid_equality([target_table, over_table])
 
-    if db_col_exists(target_table_name, target_field) is False:
-        add_numeric_field(target_table_name, target_field)
+    # Add column to target table if it does not already exist.
+    if column_name not in target_table.__table__.columns:
+        add_column(target_table, column_name, 'numeric')
+    column = getattr(target_table, column_name)
 
-    calc_area(target_table_name)
+    # Pre-calculate column area.
+    calc_area(target_table)
 
-    exec_sql(
-        ("UPDATE {tname} "
-         "SET {tfield} = (SELECT SUM(ST_Area(ST_Intersection({tname}.geom, {oname}.geom))) "
-         "FROM {oname} "
-         "WHERE ST_Intersects({tname}.geom, {oname}.geom)) / {tname}.calc_area;"
-         ).format(
-            tname=target_table_name, tfield=target_field,
-            oname=overlapping_table_name))
+    # Do the calculation.
+    db.session.query(target_table
+    ).filter(
+        target_table.geom.ST_Intersects(over_table.geom)
+    ).update(
+        {column: func.sum(
+                 target_table.geom.ST_Intersection(over_table.geom).ST_Area()
+                 ).scalar() / target_table.calc_area}
+    )
 
-    if target_df:
-        return update_df(target_df, target_field, target_table_name)
+    if df:
+        return update_df(df, column_name, target_table)
 
 
-def get_srid(table_name, field):
-    """Returns SRID of specified table/field."""
+def get_srid(column):
+    """Returns SRID of specified column."""
+    col = column.property.columns[0]
+    return col.type.srid
+
+
+def srid_equality(tables):
+    """
+    Check whether there is only one projection in list of tables.
+
+    Parameters
+    ----------
+    tables: iterable
+        List of table ORM classes to inspect geometry columns.
+
+    Returns
+    -------
+    unique: boolean
+
+    """
+    # Iterate over all columns to build set of SRIDs.
+    srids = set()
+    for table in tables:
+        for column in table.__table__.columns:
+            if isinstance(column.type, Geometry):
+                # Column is geometry column.
+                srids.add(column.type.srid)
+
+    # Projection is unique if set has single SRID.
+    assert len(srids) > 0
+    if len(srids) == 1:
+        return True
+    else:
+        return False
+
+
+def calc_area(table):
+    """
+    Calculate geometric area and store value in calc_area column.
+
+    """
+    # Add calc_area column if it does not already exist..
+    if 'calc_area' not in table.__table__.columns:
+        column_added = True
+        column = add_column(table, 'calc_area', 'numeric')
+
     try:
-        return db_to_df(
-            "SELECT FIND_SRID('public', '{tname}', '{field}')".format(
-                tname=table_name, field=field)).values[0][0]
+        db.session.query(table).update({table.calc_area:
+            table.geom.ST_Area()})
+        db.session.commit()
     except:
-        pass
-
-
-def srid_equality(target_table_name, source_table_name):
-    """Checks if there are multiple projections between two tables."""
-    srids = []
-
-    def check_append_srid(table_name, field_name):
-        if db_col_exists(table_name, field_name):
-            srids.append(get_srid(table_name, field_name))
-
-    check_append_srid(target_table_name, 'geom')
-    check_append_srid(source_table_name, 'geom')
-    check_append_srid(target_table_name, 'centroid')
-    check_append_srid(source_table_name, 'centroid')
-    srids = np.unique(srids)
-    return False if len(srids[srids > 0]) > 1 else True
-
-
-def check_srid_equality(table1, table2):
-    """
-    Tests for SRID equality between two tables and raises Exception if unequal.
-
-    """
-    if srid_equality(table1, table2) is False:
-        raise Exception('Projections are different')
-
-
-def calc_area(table_name):
-    """
-    Calculates area of geometry using ST_Area, values stored in
-    'calc_area' field.
-
-    """
-    if db_col_exists(table_name, 'calc_area') is False:
-        add_numeric_field(table_name, 'calc_area')
-        exec_sql(
-            "UPDATE {tname} SET calc_area = ST_Area({tname}.geom);".format(
-                tname=table_name))
+        # Remove column if it was freshly added and exception raised.
+        if column_added:
+            remove_column(column)
+        raise
 
 
 def invalid_geometry_diagnostic(table_name, id_field):
@@ -252,29 +262,63 @@ def update_df(df, column_name, db_table_name):
     return df
 
 
-def db_col_exists(table_name, column_name):
-    """Tests if column on database table exists"""
-    test = db_to_df(
-        ("SELECT column_name "
-         "FROM information_schema.columns "
-         "WHERE table_name='{tname}' and column_name='{col}';").format(
-            tname=table_name, col=column_name))
-
-    return True if len(test) > 0 else False
+def db_col_exists(table, column_name):
+    """Return whether column exists in database table."""
+    if column_name in table.__table__.columns:
+        return True
+    else:
+        return False
 
 
-def add_integer_field(table_name, field_to_add):
-    """Add integer field to table."""
-    exec_sql(
-        "alter table {tname} add {field} integer default 0;".format(
-            tname=table_name, field=field_to_add))
+def add_column(table, column_name, type_name, default=None):
+    """
+    Add column to table.
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Table ORM class to add column to.
+    column_name : str
+        Name of column to add to table.
+    type_name : str
+        Name of column type.
+    default : str, optional
+        Default value for column. Must include quotes if string.
+
+    Returns
+    -------
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column ORM class that was added.
+
+    """
+    # Specify sensible defaults for integer and numeric types.
+    if not default:
+        default_map = {'integer': '0',
+                       'numeric': '0.0'}
+        default = default_map[type_name]
+
+    t = table.__table__
+    with db.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE {schema}.{table}
+            ADD COLUMN {column} {type} DEFAULT {default};
+        """.format(
+            schema=t.schema, table=t.name,
+            column=column_name, type=type_name, default=default))
+    db.refresh()
+    return getattr(table, column_name)
 
 
-def add_numeric_field(table_name, field_to_add):
-    """Add numeric field to table."""
-    exec_sql(
-        "alter table {tname} add {field} numeric default 0.0;".format(
-            tname=table_name, field=field_to_add))
+def remove_column(column):
+    """Remove column from table."""
+    col = column.property.columns[0]
+    t = col.table
+    with db.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE {schema}.{table}
+            DROP COLUMN '{column}';
+        """.format(schema=t.schema, table=t.name, column=col.name))
+    db.refresh()
 
 
 def exec_sql(query, params=None):
@@ -289,98 +333,112 @@ def db_to_df(query, params=None):
         return sql.read_sql(query, conn, params=params)
 
 
-def reproject(target_table, geometry_column='geom', new_table=None,
-              config_filename=None):
+def reproject(table=None, column=None):
     """
-    Reprojects target table into the srid specified in the project config
+    Reprojects table into the SRID specified in the project config.
+
+    Either a table or a column must be specified. If a table is specified,
+    the geom column will be reprojected.
 
     Parameters
     ----------
-    target_table: str
-        Name of table to reproject.  Default is in-place reprojection.
-    geometry_column : str, optional
-        Name of the geometry column in the target table. Default is 'geom'.
-    new_table: str, optional
-        If `new_table` is specified, a copy of target table is made with
-        name `new_table`.
-    config_filename : str, optional
-        Path to additional configuration file.
+    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Table ORM class containing column.
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column ORM class to project.
 
     Returns
     -------
     None
-        Target table's geometry column is reprojected to the SRID found
-        in the config file. Function detects current target table SRID and
-        project SRID and converts on the database.
 
     """
-    project_srid = str(DataLoader(config_filename).srid)
-    table_srid = str(get_srid(target_table, geometry_column))
+    project_srid = DataLoader().srid
 
-    def update_srid(target_table, geometry_column, table_srid, project_srid):
-        exec_sql(
-            "SELECT UpdateGeometrySRID('{table}', '{col}', {srid})".format(
-                table=target_table, col=geometry_column, srid=project_srid))
-        exec_sql(
-            ("UPDATE {table} "
-             "SET {col} = ST_TRANSFORM(ST_SetSRID({col}, {tsrid}), {psrid})"
-             ).format(
-                 table=target_table, col=geometry_column, tsrid=table_srid,
-                 psrid=project_srid))
-
-    if new_table:
-        exec_sql("CREATE TABLE {ntable} as SELECT * FROM {ttable}".format(
-            ntable=new_table, ttable=target_table))
-        update_srid(new_table, geometry_column, table_srid, project_srid)
-        exec_sql(
-            ("CREATE INDEX {ntable}_{col}_gist on "
-             "{ntable} using gist({col})"
-             ).format(
-                 ntable=new_table, col=geometry_column))
-        vacuum(new_table)
+    # Get Table and Column objects.
+    if column:
+        geom = column.property.columns[0]
+        t = geom.table
     else:
-        update_srid(target_table, geometry_column, table_srid, project_srid)
-        vacuum(target_table)
+        t = table.__table__
+        geom = t.c.geom
+
+    # Reproject using ST_Transform if column SRID differs from project SRID.
+    if project_srid != geom.type.srid:
+        with db.cursor() as cur:
+            cur.execute("""
+                ALTER TABLE {schema}.{table}
+                ALTER COLUMN '{g_name}' TYPE geometry({g_type}, {psrid})
+                USING ST_Transform('{g_name}', {psrid});
+            """.format(
+                schema=t.schema, table=t.name,
+                g_name=geom.name, g_type=geom.type.geometry_type,
+                psrid=project_srid))
+    else:
+        logger.warn("Table {table} already in SRID {srid}".format(
+            table=t.name, srid=project_srid))
+
+    # Refresh ORM.
+    db.refresh()
 
 
-def vacuum(target_table):
-    """vacuums target table, returning stats for indices, etc."""
-    with db.connection() as conn:
-        conn.set_isolation_level(0)
-    exec_sql("VACUUM ANALYZE {table}".format(table=target_table))
-
-
-def conform_srids(schema=None, config_filename=None):
+def conform_srids(schema=None):
     """
-    Reprojects all non-conforming geometry columns into project SRID.
+    Reproject all non-conforming geometry columns into project SRID.
 
     Parameters
     ----------
-    schema : str, optional
-        If schema is specified, only SRIDs within specified schema
+    schema : schema object
+        If schema is specified, only SRIDs within the specified schema
         are conformed.
-    config_filename : str, optional
-        Path to additional configuration file.
 
     Returns
     -------
     None
-        Nonconforming tables' geometry columns are reprojected to the SRID
-        found in the config file.
 
     """
-    geoms = db_to_df(
-        "select f_table_schema, f_table_name, f_geometry_column, srid "
-        "from geometry_columns;")
-    if schema:
-        geoms = geoms[geoms.f_table_schema == schema]
-    project_srid = DataLoader(config_filename).srid
-    geoms = geoms[geoms.srid != project_srid]
-    for item in geoms.index:
-        target_table = geoms.f_table_name[geoms.index == item]
-        geom_col = geoms.f_geometry_column[geoms.index == item]
-        reproject(target_table[item], geometry_column=geom_col[item],
-                  config_filename=config_filename)
+    project_srid = DataLoader().srid
+
+    # Iterate over all columns. Reproject geometry columns with SRIDs
+    # that differ from project SRID.
+    for schema_obj in db.tables:
+        if not schema or schema_obj.__name__ == schema.__name__:
+            for table in schema_obj:
+                for column in table.__table__.columns:
+                    if isinstance(column.type, Geometry):
+                        # Column is geometry column. Reproject if SRID
+                        # differs from project SRID.
+                        srid = column.type.srid
+                        if srid != project_srid:
+                            reproject(table, geometry_column=column.name)
+
+
+def vacuum(table):
+    """
+    VACUUM and then ANALYZE table.
+
+    VACUUM reclaims storage from deleted or obselete tuples.
+    ANALYZE updates statistics used by the query planner to determine the most
+    efficient way to execute a query.
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Table ORM class to vacuum.
+
+    Returns
+    -------
+    None
+
+    """
+    # Vacuum
+    t = table.__table__
+    with db.connection() as conn:
+        assert conn.autocommit == False
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("VACUUM ANALYZE {schema}.{table};".format(
+                schema=t.schema, table=t.name))
+        conn.autocommit = False
 
 
 def load_delimited_file(file_path, table_name, delimiter=',', append=False):
