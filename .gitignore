@@ -52,8 +52,5 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
-# local spandex config
-config/user.cfg
-
 # IPython Notebook checkpoints
 .ipynb_checkpoints
