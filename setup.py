@@ -33,7 +33,7 @@ setup(
 
     ],
     extras_require={
-        'RasterIO': ['rasterio>=0.12', 'rasterstats>=0.4'],
-        'Shapely':  ['shapely>=1.3.2']
+        'rastertoolz': ['rasterio>=0.12', 'rasterstats>=0.4',
+                        'shapely>=1.3.2']
     }
 )
