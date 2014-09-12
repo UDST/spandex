@@ -5,6 +5,7 @@ from geoalchemy2 import Geometry
 import pandas as pd
 import pandas.io.sql as sql
 from sqlalchemy import func
+from sqlalchemy.orm import Query
 
 from .database import database as db
 from .utils import DataLoader
@@ -15,70 +16,73 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 
-def tag(target_table_name, target_field, source_table_name, source_table_field,
-        how='point_in_poly', target_df=None):
+def tag(target_table, target_column_name, source_table, source_column_name,
+        how='point_in_poly', df=None):
     """
-    Tags target table with attribute of another table based on
-    spatial relationship.
+    Tag target table with attribute of a spatially-related source table.
 
     Parameters
     ----------
-    target_table_name : str
-        Name of target table to be tagged.
-    target_field : str
-        Name of field in target table to add (if doesn't exist)
-        or update (if exists).
-    source_table_name : str
-        Name of source table containing information to tag target table with.
-    source_table_field : str
-        Name of field in source table that contains the information.
+    target_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Target table ORM class to be tagged.
+    target_column_name : str
+        Name of column in target table to add (if doesn't exist)
+        or update (if exists). This where the tag value will be stored.
+    source_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Source table ORM class containing information to tag target table.
+    source_column_name : str
+        Name of column in source table that contains the tagging information.
     how : str, optional
         How to relate the two tables spatially.
-        If not specified, defaults to 'point_in_poly'
-    target_df : DataFrame, optional
+        If not specified, defaults to 'point_in_poly'.
+        Other spatial relationships are not currently supported.
+    df : pandas.DataFrame, optional
         DataFrame to return a tagged copy of.
 
     Returns
     -------
-    None : None
-        Field is added or updated on the target_table in the database,
-        and returns nothing. Unless target_df argument is used,
-        in which case return value is pandas.DataFrame with
-        the new/updated column.
+    None
+        However, if df argument is provided, pandas.DataFrame with the
+        new or updated column is returned.
 
     """
-    check_srid_equality(target_table_name, source_table_name)
+    # Other spatial relationships are not supported.
+    if how != "point_in_poly":
+        raise ValueError("Only how='point_in_poly' is supported, not "
+                         "how='{}',".format(how))
 
-    if db_col_exists(target_table_name, target_field) is False:
-        add_integer_field(target_table_name, target_field)
+    # Table projections must be equal.
+    assert srid_equality([target_table, source_table])
 
-    if how == 'point_in_poly':
-        if db_col_exists(target_table_name, 'centroid') is True:
-            exec_sql(
-                ("update {tname} set {tfield} = b.{sfield} "
-                 "from {sname} b "
-                 "where st_within({tname}.centroid, b.geom)"
-                 ).format(
-                    tname=target_table_name, tfield=target_field,
-                    sfield=source_table_field, sname=source_table_name))
-        else:
-            exec_sql(
-                ("update {tname} set {tfield} = b.{sfield} "
-                 "from {sname} b "
-                 "where st_within(ST_centroid({tname}.geom), b.geom)"
-                 ).format(
-                    tname=target_table_name, tfield=target_field,
-                    sfield=source_table_field, sname=source_table_name))
+    # Get source column.
+    source_column = getattr(source_table, source_column_name)
 
-    if target_df:
-        return update_df(target_df, target_field, target_table_name)
+    # Add target column to target table if it does not already exist.
+    if target_column_name in target_table.__table__.columns:
+        target_column = getattr(target_table, target_column_name)
+    else:
+        target_column = add_column(target_table, target_column_name, 'float')
+
+    # Tag target table with column from source table.
+    with db.session() as sess:
+        sess.query(target_table).filter(
+            target_table.geom.ST_Centroid().ST_Within(source_table.geom)
+        ).update(
+            {target_column: source_column},
+            synchronize_session=False
+        )
+
+    if df:
+        return update_df(df, target_column, target_table)
 
 
 def proportion_overlap(target_table, over_table, column_name, df=None):
     """
-    Calculates proportion overlap between target table's geometry and another
-    table's geometry. Populates column in target table with proportion
-    overlap value.
+    Calculate proportion of target table geometry overlap.
+
+    Calculate proportion of geometry area in each row of target table that
+    is overlapped by another table's geometry. Populate specified column in
+    target table with proportion overlap value.
 
     Parameters
     ----------
@@ -113,24 +117,24 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
     # Pre-calculate column area.
     calc_area(target_table)
 
-    # Do the calculation.
-    db.session.query(target_table
-    ).filter(
-        target_table.geom.ST_Intersects(over_table.geom)
-    ).update(
-        {column: func.sum(
-                 target_table.geom.ST_Intersection(over_table.geom).ST_Area()
-                 ).scalar() / target_table.calc_area}
-    )
+    # Calculate proportion of overlapping area for each target table row.
+    with db.session() as sess:
+        proportion_overlap = sess.query(
+            func.sum(
+                target_table.geom.ST_Intersection(over_table.geom).ST_Area()
+            ) / target_table.calc_area
+        ).filter(
+            target_table.geom.ST_Intersects(over_table.geom)
+        ).group_by(
+            target_table.geom
+        )
+        sess.query(target_table).update(
+            {column: proportion_overlap.selectable},
+            synchronize_session=False
+        )
 
     if df:
-        return update_df(df, column_name, target_table)
-
-
-def get_srid(column):
-    """Returns SRID of specified column."""
-    col = column.property.columns[0]
-    return col.type.srid
+        return update_df(df, column, target_table)
 
 
 def srid_equality(tables):
@@ -190,92 +194,109 @@ def calc_area(table):
         raise
 
 
-def invalid_geometry_diagnostic(table_name, id_field):
+def invalid_geometry_diagnostic(table, column=None):
     """"""
     """
-    Returns DataFrame with diagnostic information for only records
-    with invalid geometry. Returned columns include record identifier,
-    whether geometry is simple, and reason for invalidity.
+    Return DataFrame with information on records with invalid geometry.
+
+    Returned columns include record identifier, whether geometry is simple,
+    and reason for invalidity.
 
     Parameters
     ----------
-    table_name : str
-        Name of database table to diagnose.
-    id_field : str
-        Name of unique identifier field in database table.  Can be any field.
+    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Table ORM class to diagnose.
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
+        Column ORM class to use as index.
 
     Returns
     -------
     df : pandas.DataFrame
-        Table with all records that have invalid geometry, with
-        diagnostic information.
 
     """
-    return db_to_df(
-        ("SELECT * FROM ("
-         "SELECT {field}, ST_IsValid(geom) as valid, "
-         "ST_IsSimple(geom) as simple,  ST_IsValidReason(geom), geom FROM {tname}"
-         ") AS t WHERE NOT(valid);").format(field=id_field, tname=table_name))
+    # Build list of columns to return, including optional index.
+    columns = [func.ST_IsSimple(table.geom).label('simple'),
+               func.ST_IsValidReason(table.geom).label('reason'),
+               table.geom]
+    if column:
+        columns.append(column)
+
+    # Query information on rows with invalid geometries.
+    with db.session() as sess:
+        q = sess.query(
+            *columns
+        ).filter(
+            ~table.geom.ST_IsValid()
+        )
+
+    # Convert query to DataFrame.
+    if column:
+        df = db_to_df(q, index=column.name)
+    else:
+        df = db_to_df(q)
+    return df
 
 
-def duplicate_stacked_geometry_diagnostic(table_name):
+def duplicate_stacked_geometry_diagnostic(table):
     """
-    Returns DataFrame with all records that have duplicate, stacked geometry.
+    Return DataFrame with all records that have identical, stacked geometry.
 
     Parameters
     ----------
-    table_name : str
-        Name of database table to diagnose.
+    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Table ORM class to diagnose.
 
     Returns
     -------
     df : pandas.DataFrame
-        Table with all records that have duplicate, stacked geometry.
 
     """
-    return db_to_df(
-        ("SELECT * FROM {tname} "
-         "where geom in (select geom from {tname} "
-         "group by geom having count(*) > 1)").format(tname=table_name))
+    # Query rows with duplicate geometries.
+    with db.session() as sess:
+        geoms = sess.query(table.geom).having(
+            func.count(table.geom) > 1
+        ).group_by(table.geom)
+        rows = sess.query(table).filter(
+            table.geom.in_(geoms)
+        )
+
+    # Convert query to DataFrame.
+    df = db_to_df(rows)
+    return df
 
 
-def update_df(df, column_name, db_table_name):
+def update_df(df, column, table):
     """
-    Adds/updates column in DataFrame from database table.
-    Database table must contain field with the same name as
+    Add or update column in DataFrame from database table.
+
+    Database table must contain column with the same name as
     DataFrame's index (df.index.name).
 
     Parameters
     ----------
-    df : DataFrame
-        Table to add column to.
-    column_name : str
-        Name of field in database table to add to DataFrame.
-        This is also the name of the column to add/update in the DataFrame.
-    db_table_name : str
-        Database table containing field to add/update DataFrame.
+    df : pandas.DataFrame
+        DataFrame to return an updated copy of.
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column ORM class to update DataFrame with.
+    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Table ORM class containing columns to update with and index on.
 
     Returns
     -------
     df : pandas.DataFrame
-        Table with new/updated column.
 
     """
-    df_idx_name = df.index.name
-    new_col = db_to_df(
-        "select {idx}, {col} from {tname}".format(
-            idx=df_idx_name, col=column_name, tname=db_table_name)
-        ).set_index(df_idx_name)[column_name]
-    df[column_name] = new_col
+    # Get table column to use as index based on DataFrame index name.
+    index_column = getattr(table, df.index.name)
+
+    # Query index column and column to update DataFrame with.
+    with db.session() as sess:
+        q = sess.query(index_column, column)
+
+    # Update DataFrame column.
+    new_df = db_to_df(q, index=df.index.name)
+    df[column.name] = new_df[column.name]
     return df
-
-
-def db_col_exists(table, column_name):
-    """Return whether column exists in database table."""
-    if column_name in table.__table__.columns:
-        return True
-    else:
-        return False
 
 
 def add_column(table, column_name, type_name, default=None):
@@ -334,10 +355,17 @@ def exec_sql(query, params=None):
         cur.execute(query, params)
 
 
-def db_to_df(query, params=None):
-    """Executes SQL query and returns DataFrame."""
-    with db.connection() as conn:
-        return sql.read_sql(query, conn, params=params)
+def db_to_df(query, params=None, *args, **kwargs):
+    """Execute SQLAlchemy or SQL query and return DataFrame."""
+    if not params and isinstance(query, Query):
+        # Convert Query object to DataFrame.
+        records = [rec.__dict__ for rec in query.all()]
+        df = pd.DataFrame.from_records(records, coerce_float=True,
+                                       *args, **kwargs)
+    else:
+        with db.connection() as conn:
+            df = sql.read_sql(query, conn, params=params, *args, **kwargs)
+    return df
 
 
 def reproject(table=None, column=None):
