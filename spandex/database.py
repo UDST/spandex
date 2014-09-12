@@ -19,7 +19,7 @@ class database(object):
 
     """
     tables = None
-    session = None
+    _session = None
     _connection = None
     _engine = None
     _model = None
@@ -57,13 +57,13 @@ class database(object):
 
         """
         # Close existing session.
-        if cls.session:
-            cls.session.close()
+        if cls._session:
+            cls._session.close()
 
         # Rebuild GeoAlchemy ORM.
         cls._model = declarative_base(cls._engine)
         Session = sessionmaker(bind=cls._engine)
-        cls.session = Session()
+        cls._session = Session()
 
         # Reflect tables in all PostgreSQL schemas.
         if not cls.tables:
@@ -164,3 +164,14 @@ class database(object):
         with cls._connection as conn:
             with conn.cursor() as cur:
                 yield cur
+
+    @classmethod
+    @contextmanager
+    def session(cls):
+        try:
+            cls._session.flush()
+            yield cls._session
+            cls._session.commit()
+        except:
+            cls._session.rollback()
+            raise
