@@ -26,14 +26,14 @@ setup(
     ],
     packages=find_packages(exclude=['*.tests']),
     install_requires=[
-        'gdal>=1.10.1',
+        'gdal>=1.8.0',
         'numpy>=1.8.0',
         'pandas>=0.13.1',
-        'psycopg2>=2.5.4',
+        'psycopg2>=2.5',
 
     ],
     extras_require={
-        'RasterIO': ['rasterio>=0.12', 'rasterstats>=0.4'],
-        'Shapely':  ['shapely>=1.3.2']
+        'rastertoolz': ['rasterio>=0.12', 'rasterstats>=0.4',
+                        'shapely>=1.3.2']
     }
 )
