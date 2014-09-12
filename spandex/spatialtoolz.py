@@ -104,9 +104,11 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
     assert srid_equality([target_table, over_table])
 
     # Add column to target table if it does not already exist.
-    if column_name not in target_table.__table__.columns:
-        add_column(target_table, column_name, 'numeric')
-    column = getattr(target_table, column_name)
+    if column_name in target_table.__table__.columns:
+        column = getattr(target_table, column_name)
+    else:
+        column = add_column(target_table, column_name, 'float')
+
 
     # Pre-calculate column area.
     calc_area(target_table)
@@ -169,7 +171,7 @@ def calc_area(table):
     # Add calc_area column if it does not already exist..
     if 'calc_area' not in table.__table__.columns:
         column_added = True
-        column = add_column(table, 'calc_area', 'numeric')
+        column = add_column(table, 'calc_area', 'float')
 
     try:
         db.session.query(table).update({table.calc_area:
@@ -291,20 +293,19 @@ def add_column(table, column_name, type_name, default=None):
         Column ORM class that was added.
 
     """
-    # Specify sensible defaults for integer and numeric types.
-    if not default:
-        default_map = {'integer': '0',
-                       'numeric': '0.0'}
-        default = default_map[type_name]
+    if default:
+        default_str = "DEFAULT {}".format(default)
+    else:
+        default_str = ""
 
     t = table.__table__
     with db.cursor() as cur:
         cur.execute("""
             ALTER TABLE {schema}.{table}
-            ADD COLUMN {column} {type} DEFAULT {default};
+            ADD COLUMN {column} {type} {default_str};
         """.format(
             schema=t.schema, table=t.name,
-            column=column_name, type=type_name, default=default))
+            column=column_name, type=type_name, default_str=default_str))
     db.refresh()
     return getattr(table, column_name)
 
@@ -471,7 +472,7 @@ def load_delimited_file(file_path, table_name, delimiter=',', append=False):
     dtypes[dtypes == 'object'] = 'character varying'
     dtypes[dtypes == 'int64'] = 'integer'
     dtypes[dtypes == 'int32'] = 'integer'
-    dtypes[dtypes == 'float64'] = 'numeric'
+    dtypes[dtypes == 'float64'] = 'float'
     cols = pd.Series(list(delimited_file.columns))
     cols = cols.str.replace(' ', '_')
     cols = cols.str.replace('\'', '')
