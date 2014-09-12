@@ -3,7 +3,6 @@ import os
 
 from geoalchemy2 import Geometry
 import pandas as pd
-import pandas.io.sql as sql
 from sqlalchemy import func
 from sqlalchemy.orm import Query
 
@@ -355,16 +354,35 @@ def exec_sql(query, params=None):
         cur.execute(query, params)
 
 
-def db_to_df(query, params=None, *args, **kwargs):
-    """Execute SQLAlchemy or SQL query and return DataFrame."""
-    if not params and isinstance(query, Query):
-        # Convert Query object to DataFrame.
-        records = [rec.__dict__ for rec in query.all()]
-        df = pd.DataFrame.from_records(records, coerce_float=True,
-                                       *args, **kwargs)
+def db_to_df(query, index=None):
+    """
+    Return DataFrame from Query object or list of column objects.
+
+    Parameters
+    ----------
+    query : sqlalchemy.orm.Query or iterable
+        Query ORM object or list of column ORM objects.
+    index : str, optional
+        Name of column to use as DataFrame index. If provided, column
+        must be contained in query.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+
+    """
+    if isinstance(query, Query):
+        # Assume input is Query object.
+        q = query
     else:
-        with db.connection() as conn:
-            df = sql.read_sql(query, conn, params=params, *args, **kwargs)
+        # Assume input is list of column ORM classes.
+        with db.session() as sess:
+            q = sess.query(*query)
+
+    # Convert Query object to DataFrame.
+    columns = [desc['name'] for desc in q.column_descriptions]
+    df = pd.DataFrame.from_records(q.all(), index=index, columns=columns,
+                                   coerce_float=True)
     return df
 
 
