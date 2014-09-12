@@ -67,7 +67,7 @@ class database(object):
 
         # Reflect tables in all PostgreSQL schemas.
         if not cls.tables:
-            cls.tables = type('tables', (),
+            cls.tables = type('tables', (object,),
                               {'__doc__': "Reflected GeoAlchemy tables."})
         with cls.cursor() as cur:
             # Select list of PostgreSQL schemas.
@@ -81,7 +81,7 @@ class database(object):
                                                 extend_existing=True,
                                                 autoload_replace=True)
                     if not hasattr(cls.tables, schema_name):
-                        schema = type(str(schema_name), (),
+                        schema = type(str(schema_name), (object,),
                                       {'__doc__':
                                        "Reflected GeoAlchemy schema."})
                         setattr(cls.tables, schema_name, schema)
