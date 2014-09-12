@@ -4,6 +4,7 @@ import os
 from geoalchemy2 import Geometry
 import pandas as pd
 from sqlalchemy import func
+from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Query
 
 from .database import database as db
@@ -354,15 +355,17 @@ def exec_sql(query, params=None):
         cur.execute(query, params)
 
 
-def db_to_df(query, index=None):
+def db_to_df(query, index_name=None):
     """
-    Return DataFrame from Query object or list of column objects.
+    Return DataFrame from Query, table, or list of ORM objects, like columns.
 
     Parameters
     ----------
-    query : sqlalchemy.orm.Query or iterable
-        Query ORM object or list of column ORM objects.
-    index : str, optional
+    query : sqlalchemy.orm.Query, sqlalchemy.ext.declarative.DeclarativeMeta,
+            or iterable
+        Query ORM object, table ORM class, or list of ORM objects to query,
+        like columns.
+    index_name : str, optional
         Name of column to use as DataFrame index. If provided, column
         must be contained in query.
 
@@ -374,15 +377,28 @@ def db_to_df(query, index=None):
     if isinstance(query, Query):
         # Assume input is Query object.
         q = query
-    else:
-        # Assume input is list of column ORM classes.
+    elif hasattr(query, '__iter__'):
+        # Assume input is list of ORM objects.
         with db.session() as sess:
             q = sess.query(*query)
+    else:
+        # Assume input is single ORM object.
+        with db.session() as sess:
+            q = sess.query(query)
 
     # Convert Query object to DataFrame.
-    columns = [desc['name'] for desc in q.column_descriptions]
-    df = pd.DataFrame.from_records(q.all(), index=index, columns=columns,
-                                   coerce_float=True)
+    entities = q.column_descriptions
+    if (len(entities) == 1 and
+        isinstance(entities[0]['type'], DeclarativeMeta)):
+        # If we query a table, column_descriptions refers to the table itself,
+        # not its columns.
+        table = q.column_descriptions[0]['type']
+        column_names = table.__table__.columns.keys()
+    else:
+        column_names = [desc['name'] for desc in q.column_descriptions]
+    data = [rec.__dict__ for rec in q.all()]
+    df = pd.DataFrame.from_records(data, index=index_name,
+                                   columns=column_names, coerce_float=True)
     return df
 
 
