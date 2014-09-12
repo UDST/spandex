@@ -26,7 +26,7 @@ setup(
     ],
     packages=find_packages(exclude=['*.tests']),
     install_requires=[
-        'gdal>=1.10.1',
+        'gdal>=1.8.0',
         'numpy>=1.8.0',
         'pandas>=0.13.1',
         'psycopg2>=2.5.4',
