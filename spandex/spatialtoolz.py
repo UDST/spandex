@@ -23,12 +23,12 @@ def tag(target_table, target_column_name, source_table, source_column_name,
 
     Parameters
     ----------
-    target_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    target_table : sqlalchemy.ext.declarative.DeclarativeMeta
         Target table ORM class to be tagged.
     target_column_name : str
         Name of column in target table to add (if doesn't exist)
         or update (if exists). This where the tag value will be stored.
-    source_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    source_table : sqlalchemy.ext.declarative.DeclarativeMeta
         Source table ORM class containing information to tag target table.
     source_column_name : str
         Name of column in source table that contains the tagging information.
@@ -54,7 +54,7 @@ def tag(target_table, target_column_name, source_table, source_column_name,
     # Table projections must be equal.
     assert srid_equality([target_table, source_table])
 
-    # Get source column.
+    # Get source column ORM object.
     source_column = getattr(source_table, source_column_name)
 
     # Add target column to target table if it does not already exist.
@@ -86,9 +86,9 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
 
     Parameters
     ----------
-    target_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    target_table : sqlalchemy.ext.declarative.DeclarativeMeta
         Target table ORM class containing geometry to overlap.
-    over_table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    over_table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class containing overlapping geometry.
     column_name : str
         Name of column in target table to add (if doesn't exist) or
@@ -204,10 +204,10 @@ def invalid_geometry_diagnostic(table, column=None):
 
     Parameters
     ----------
-    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to diagnose.
     column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
-        Column ORM class to use as index.
+        Column ORM object to use as index.
 
     Returns
     -------
@@ -243,7 +243,7 @@ def duplicate_stacked_geometry_diagnostic(table):
 
     Parameters
     ----------
-    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to diagnose.
 
     Returns
@@ -277,8 +277,8 @@ def update_df(df, column, table):
     df : pandas.DataFrame
         DataFrame to return an updated copy of.
     column : sqlalchemy.orm.attributes.InstrumentedAttribute
-        Column ORM class to update DataFrame with.
-    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+        Column ORM object to update DataFrame with.
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class containing columns to update with and index on.
 
     Returns
@@ -305,7 +305,7 @@ def add_column(table, column_name, type_name, default=None):
 
     Parameters
     ----------
-    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to add column to.
     column_name : str
         Name of column to add to table.
@@ -317,7 +317,7 @@ def add_column(table, column_name, type_name, default=None):
     Returns
     -------
     column : sqlalchemy.orm.attributes.InstrumentedAttribute
-        Column ORM class that was added.
+        Column ORM object that was added.
 
     """
     if default:
@@ -377,10 +377,10 @@ def reproject(table=None, column=None):
 
     Parameters
     ----------
-    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
-        Table ORM class containing column.
-    column : sqlalchemy.orm.attributes.InstrumentedAttribute
-        Column ORM class to project.
+    table : sqlalchemy.ext.declarative.DeclarativeMeta, optional
+        Table ORM class containing geom column to reproject.
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
+        Column ORM object to reproject.
 
     Returns
     -------
@@ -422,7 +422,7 @@ def conform_srids(schema=None):
 
     Parameters
     ----------
-    schema : schema object
+    schema : schema class
         If schema is specified, only SRIDs within the specified schema
         are conformed.
 
@@ -460,7 +460,7 @@ def vacuum(table):
 
     Parameters
     ----------
-    table : sqlalchemy.ext.declarative.api.DeclarativeMeta
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to vacuum.
 
     Returns
