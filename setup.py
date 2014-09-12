@@ -30,8 +30,10 @@ setup(
         'numpy>=1.8.0',
         'pandas>=0.13.1',
         'psycopg2>=2.5.4',
-        'rasterio>=0.12',
-        'rasterstats>=0.4',
-        'shapely>=1.3.2'
-    ]
+
+    ],
+    extras_require={
+        'RasterIO': ['rasterio>=0.12', 'rasterstats>=0.4'],
+        'Shapely':  ['shapely>=1.3.2']
+    }
 )
