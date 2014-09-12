@@ -150,10 +150,10 @@ def srid_equality(tables):
     # Iterate over all columns to build set of SRIDs.
     srids = set()
     for table in tables:
-        for column in table.__table__.columns:
-            if isinstance(column.type, Geometry):
+        for c in table.__table__.columns:
+            if isinstance(c.type, Geometry):
                 # Column is geometry column.
-                srids.add(column.type.srid)
+                srids.add(c.type.srid)
 
     # Projection is unique if set has single SRID.
     assert len(srids) > 0
@@ -169,14 +169,20 @@ def calc_area(table):
 
     """
     # Add calc_area column if it does not already exist..
-    if 'calc_area' not in table.__table__.columns:
+    if 'calc_area' in table.__table__.columns:
+        column_added = False
+        column = table.calc_area
+    else:
         column_added = True
         column = add_column(table, 'calc_area', 'float')
 
+    # Calculate geometric area.
     try:
-        db.session.query(table).update({table.calc_area:
-            table.geom.ST_Area()})
-        db.session.commit()
+        with db.session() as sess:
+            sess.query(table).update(
+                {column: table.geom.ST_Area()},
+                synchronize_session=False
+            )
     except:
         # Remove column if it was freshly added and exception raised.
         if column_added:
@@ -317,13 +323,13 @@ def remove_column(column):
     with db.cursor() as cur:
         cur.execute("""
             ALTER TABLE {schema}.{table}
-            DROP COLUMN '{column}';
+            DROP COLUMN {column};
         """.format(schema=t.schema, table=t.name, column=col.name))
     db.refresh()
 
 
 def exec_sql(query, params=None):
-    """Executes SQL query."""
+    """Execute SQL query."""
     with db.cursor() as cur:
         cur.execute(query, params)
 
@@ -336,7 +342,7 @@ def db_to_df(query, params=None):
 
 def reproject(table=None, column=None):
     """
-    Reprojects table into the SRID specified in the project config.
+    Reproject table into the SRID specified in the project config.
 
     Either a table or a column must be specified. If a table is specified,
     the geom column will be reprojected.
@@ -368,8 +374,8 @@ def reproject(table=None, column=None):
         with db.cursor() as cur:
             cur.execute("""
                 ALTER TABLE {schema}.{table}
-                ALTER COLUMN '{g_name}' TYPE geometry({g_type}, {psrid})
-                USING ST_Transform('{g_name}', {psrid});
+                ALTER COLUMN {g_name} TYPE geometry({g_type}, {psrid})
+                USING ST_Transform({g_name}, {psrid});
             """.format(
                 schema=t.schema, table=t.name,
                 g_name=geom.name, g_type=geom.type.geometry_type,
@@ -401,16 +407,19 @@ def conform_srids(schema=None):
 
     # Iterate over all columns. Reproject geometry columns with SRIDs
     # that differ from project SRID.
-    for schema_obj in db.tables:
-        if not schema or schema_obj.__name__ == schema.__name__:
-            for table in schema_obj:
-                for column in table.__table__.columns:
-                    if isinstance(column.type, Geometry):
-                        # Column is geometry column. Reproject if SRID
-                        # differs from project SRID.
-                        srid = column.type.srid
-                        if srid != project_srid:
-                            reproject(table, geometry_column=column.name)
+    for schema_name, schema_obj in db.tables.__dict__.items():
+        if not schema_name.startswith('_'):
+            if not schema or schema_obj.__name__ == schema_name:
+                for table_name, table in schema_obj.__dict__.items():
+                    if not table_name.startswith('_'):
+                        for c in table.__table__.columns:
+                            if isinstance(c.type, Geometry):
+                                # Column is geometry column. Reproject if SRID
+                                # differs from project SRID.
+                                srid = c.type.srid
+                                if srid != project_srid:
+                                    column = getattr(table, c.name)
+                                    reproject(table, column)
 
 
 def vacuum(table):
