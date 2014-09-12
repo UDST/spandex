@@ -29,7 +29,7 @@ setup(
         'gdal>=1.8.0',
         'numpy>=1.8.0',
         'pandas>=0.13.1',
-        'psycopg2>=2.5.4',
+        'psycopg2>=2.5',
 
     ],
     extras_require={
