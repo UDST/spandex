@@ -231,7 +231,7 @@ def invalid_geometry_diagnostic(table, column=None):
 
     # Convert query to DataFrame.
     if column:
-        df = db_to_df(q, index=column.name)
+        df = db_to_df(q, index_name=column.name)
     else:
         df = db_to_df(q)
     return df
@@ -294,7 +294,7 @@ def update_df(df, column, table):
         q = sess.query(index_column, column)
 
     # Update DataFrame column.
-    new_df = db_to_df(q, index=df.index.name)
+    new_df = db_to_df(q, index_name=df.index.name)
     df[column.name] = new_df[column.name]
     return df
 
