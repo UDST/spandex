@@ -113,7 +113,6 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
     else:
         column = add_column(target_table, column_name, 'float')
 
-
     # Pre-calculate column area.
     calc_area(target_table)
 
@@ -505,7 +504,7 @@ def vacuum(table):
     # Vacuum
     t = table.__table__
     with db.connection() as conn:
-        assert conn.autocommit == False
+        assert conn.autocommit is False
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute("VACUUM ANALYZE {schema}.{table};".format(

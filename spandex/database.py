@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from geoalchemy2 import Geometry # Import needed for database reflection.
+from geoalchemy2 import Geometry  # Import needed for database reflection.
 import psycopg2
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
