@@ -17,12 +17,10 @@ setup(
     long_description=long_description,
     author='Synthicity',
     author_email='ejanowicz@synthicity.com',
-    license='BSD',
     url='https://github.com/synthicity/spandex',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Programming Language :: Python :: 2.7',
-        'License :: OSI Approved :: BSD License'
     ],
     packages=find_packages(exclude=['*.tests']),
     install_requires=[
