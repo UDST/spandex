@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from geoalchemy2 import Geometry  # Import needed for database reflection.
+from geoalchemy2 import Geometry  # Needed for database reflection. # noqa
 import psycopg2
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -75,8 +75,8 @@ class database(object):
             for row in cur:
                 schema_name = row[0]
                 if (not schema_name.startswith('pg_') and
-                    schema_name != 'information_schema'):
-                    # Reflect and assign each schema as attribute of tables.
+                        schema_name != 'information_schema'):
+                    # Assign each reflected schema as an attribute.
                     cls._model.metadata.reflect(schema=schema_name,
                                                 extend_existing=True,
                                                 autoload_replace=True)

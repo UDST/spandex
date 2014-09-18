@@ -51,7 +51,7 @@ def logf(level, f):
         line = line.strip()
         if line:
             if (line.startswith("Shapefile type: ") or
-                line.startswith("Postgis type: ")):
+                    line.startswith("Postgis type: ")):
                 # Send usual shp2pgsql stderr messages to debug log.
                 logger.debug(line)
             else:
@@ -260,7 +260,7 @@ class DataLoader(object):
             # Successfully identified SRID.
             srid = int(data['codes'][0]['code'])
             logger.debug("prj2EPSG API returned SRID %s: %s"
-                        % (srid, filename))
+                         % (srid, filename))
             return srid
 
         # Unable to identify SRID.
@@ -433,5 +433,5 @@ def load_multiple_shp(shapefiles, config_filename=None):
             print 'Loading %s.' % shp_name
             path = path_func(shp_name, shp_dict[shp_name][0])
             loader.load_shp(filename=path,
-                table=shape_category + '_' + shp_name,
-                srid=shp_dict[shp_name][1], drop=True)
+                            table=shape_category + '_' + shp_name,
+                            srid=shp_dict[shp_name][1], drop=True)
