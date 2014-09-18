@@ -10,8 +10,7 @@ def from_geotiff(path_to_tif):
     with rasterio.drivers(CPL_DEBUG=True):
         with rasterio.open(path_to_tif) as src:
             b, g, r = src.read()
-            transform = src.meta['transform']
-
+            
         total = np.zeros(r.shape, dtype=rasterio.uint16)
         for band in r, g, b:
             total += band
@@ -35,8 +34,7 @@ def to_geotiff(array, src, path_to_tif):
 # return the np array image of each geometry and apply arbitrary function instead
 # of precanned set.  See notebook in the spandex examples dir for example usage.
 def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_value=None,
-                global_src_extent=False, categorical=False, stats=None,
-                copy_properties=False, all_touched=False, transform=None):
+                categorical=False, stats=None, copy_properties=False, all_touched=False, transform=None):
 
     if not stats:
         if not categorical:
@@ -49,10 +47,6 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
         raise Exception("Must provide the 'transform' kwarg")
     rgt = transform
     rsize = (raster.shape[1], raster.shape[0])
-
-    # global_src_extent is implicitly turned on, array is already in memory
-    if not global_src_extent:
-        global_src_extent = True
 
     rbounds = raster_extent_as_bounds(rgt, rsize)
     features_iter, strategy, spatial_ref = get_features(vectors, layer_num)
@@ -112,24 +106,17 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
             feature_stats = dict([(s, None) for s in stats])
             img = {'__fid__': i, 'img': None}
         else:
-            if not global_src_extent:
-                # use feature's source extent and read directly from source
-                # fastest option when you have fast disks and well-indexed raster
-                # advantage: each feature uses the smallest raster chunk
-                # disadvantage: lots of disk reads on the source raster
-                src_array = rb.ReadAsArray(*src_offset)
-            else:
-                # derive array from global source extent array
-                # useful *only* when disk IO or raster format inefficiencies
-                # are your limiting factor
-                # advantage: reads raster data in one pass before loop
-                # disadvantage: large vector extents combined with big rasters
-                # need lotsa memory
-                xa = src_offset[0] - global_src_offset[0]
-                ya = src_offset[1] - global_src_offset[1]
-                xb = xa + src_offset[2]
-                yb = ya + src_offset[3]
-                src_array = global_src_array[ya:yb, xa:xb]
+            # derive array from global source extent array
+            # useful *only* when disk IO or raster format inefficiencies
+            # are your limiting factor
+            # advantage: reads raster data in one pass before loop
+            # disadvantage: large vector extents combined with big rasters
+            # need lotsa memory
+            xa = src_offset[0] - global_src_offset[0]
+            ya = src_offset[1] - global_src_offset[1]
+            xb = xa + src_offset[2]
+            yb = ya + src_offset[3]
+            src_array = global_src_array[ya:yb, xa:xb]
 
             # Create a temporary vector layer in memory
             mem_ds = mem_drv.CreateDataSource('out')
@@ -165,10 +152,7 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
                 )
             )
 
-            if categorical:
-                feature_stats = dict(pixel_count)
-            else:
-                feature_stats = {}
+            feature_stats = {}
 
             if 'min' in stats:
                 feature_stats['min'] = float(masked.min())
@@ -189,18 +173,6 @@ def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_valu
                 feature_stats['std'] = float(masked.std())
             if 'median' in stats:
                 feature_stats['median'] = float(np.median(masked.compressed()))
-            if 'majority' in stats:
-                try:
-                    feature_stats['majority'] = pixel_count.most_common(1)[0][0]
-                except IndexError:
-                    feature_stats['majority'] = None
-            if 'minority' in stats:
-                try:
-                    feature_stats['minority'] = pixel_count.most_common()[-1][0]
-                except IndexError:
-                    feature_stats['minority'] = None
-            if 'unique' in stats:
-                feature_stats['unique'] = len(list(pixel_count.keys()))
             if 'range' in stats:
                 try:
                     rmin = feature_stats['min']
