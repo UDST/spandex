@@ -1,0 +1,13 @@
+language: python
+python:
+- '2.7'
+env:
+- TOX_ENV=pytest
+- TOX_ENV=flake8
+install:
+- sudo apt-get install python-gdal python-numpy python-psycopg2 python-sqlalchemy
+- pip install tox
+script:
+- tox -e $TOX_ENV
+after_success:
+- coveralls
