@@ -208,7 +208,7 @@ class DataLoader(object):
             except IOError:
                 continue
 
-        if not encoding:
+        if not encoding or encoding.lower() == "system":
             # No encoding found. Fall back to LATIN1.
             encoding = "LATIN1"
             logger.debug("Assuming %s attribute encoding: %s"
