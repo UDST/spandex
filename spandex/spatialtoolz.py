@@ -616,5 +616,5 @@ def load_multiple_delimited_files(files, config_filename=None):
             path = path_func(name, del_dict[name][0])
             table_name = del_dict[name][1]
             delimiter = del_dict[name][2]
-            print 'Loading %s as %s' % (del_dict[name][0], table_name)
+            print('Loading %s as %s' % (del_dict[name][0], table_name))
             load_delimited_file(path, table_name, delimiter=delimiter)

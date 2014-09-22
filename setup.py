@@ -28,6 +28,7 @@ setup(
         'GeoAlchemy2>=0.2.1',
         'pandas>=0.13.1',
         'psycopg2>=2.5',
+        'six',
         'SQLAlchemy>=0.8'
     ],
     extras_require={

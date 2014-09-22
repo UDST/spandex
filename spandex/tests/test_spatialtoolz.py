@@ -1,5 +1,3 @@
-import sys
-print sys.path
 from spandex import spatialtoolz
 
 
