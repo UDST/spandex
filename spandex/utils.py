@@ -49,8 +49,8 @@ def logf(level, f):
     for line in f:
         line = line.strip()
         if line:
-            if (line.startswith("Shapefile type: ") or
-                    line.startswith("Postgis type: ")):
+            if (line.startswith(b"Shapefile type: ") or
+                    line.startswith(b"Postgis type: ")):
                 # Send usual shp2pgsql stderr messages to debug log.
                 logger.debug(line)
             else:
@@ -327,10 +327,10 @@ class DataLoader(object):
                                                 stdout=subprocess.PIPE,
                                                 stderr=subprocess.PIPE)
                 try:
-                    command = ''
+                    command = b""
                     for line in create_table.stdout:
-                        if line and not (line.startswith('BEGIN') or
-                                         line.startswith('COMMIT')):
+                        if line and not (line.startswith(b"BEGIN") or
+                                         line.startswith(b"COMMIT")):
                             command += line
                     cur.execute(command)
                 finally:
@@ -347,7 +347,7 @@ class DataLoader(object):
             try:
                 while True:
                     line = append_data.stdout.readline()
-                    if line.startswith('COPY'):
+                    if line.startswith(b"COPY"):
                         break
                 cur.copy_expert(line, append_data.stdout)
             finally:
