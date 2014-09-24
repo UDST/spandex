@@ -61,7 +61,9 @@ def tag(target_table, target_column_name, source_table, source_column_name,
     if target_column_name in target_table.__table__.columns:
         target_column = getattr(target_table, target_column_name)
     else:
-        target_column = add_column(target_table, target_column_name, 'float')
+        # Use data type of source column for new column.
+        dtype = source_column.property.columns[0].type.compile()
+        target_column = add_column(target_table, target_column_name, dtype)
 
     # Tag target table with column from source table.
     with db.session() as sess:
