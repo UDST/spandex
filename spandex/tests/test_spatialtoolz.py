@@ -14,7 +14,10 @@ def get_srids(loader):
     # against spatialtoolz.conform_srids, which iterates over the ORM.
     srids = []
     with loader.database.cursor() as cur:
-        cur.execute("SELECT DISTINCT srid from geometry_columns;")
+        cur.execute("""
+            SELECT DISTINCT srid from geometry_columns
+            WHERE f_table_schema = 'sample';
+        """)
         for (srid,) in cur:
             srids.append(srid)
     assert len(srids) > 0
@@ -99,7 +102,7 @@ def test_reproject(loader):
     assert srids != [loader.srid]
 
     # Reproject all non-conforming SRIDs into project SRID.
-    spatialtoolz.conform_srids(schema='sample')
+    spatialtoolz.conform_srids(schema=loader.database.tables.sample)
 
     # Assert that all SRIDs are consistent and match defined project SRID.
     srids = get_srids(loader)
