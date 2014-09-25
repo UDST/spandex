@@ -1,4 +1,5 @@
 import numpy as np
+from sqlalchemy import func
 
 from spandex import spatialtoolz
 
@@ -54,8 +55,45 @@ def test_tag(loader):
     assert np.all([bg_id in bg_df.index for bg_id in parcels_bg_ids])
 
 
-def test_reproject(loader):
+def test_proportion_overlap(loader):
+    # Calculate proportion of each parcel overlapped by water.
+    parcels = loader.database.tables.sample.heather_farms
+    water = loader.database.tables.sample.hf_water
+    assert not hasattr(parcels, 'proportion_water')
+    spatialtoolz.proportion_overlap(parcels, water, 'proportion_water')
+    assert hasattr(parcels, 'proportion_water')
 
+    # Build DataFrame from columns of parcels table.
+    columns = [parcels.parcel_id, parcels.geom.ST_Area(),
+               parcels.proportion_water]
+    parcels_df = spatialtoolz.db_to_df(columns, index_name='parcel_id')
+
+    # Assert that proportion overlap values are between 0 and 1.
+    assert parcels_df.proportion_water.dtype == float
+    assert not (parcels_df.proportion_water < 0).any()
+    assert not (parcels_df.proportion_water > 1).any()
+
+    # Assert that sum of overlapped parcel area is <= total water area.
+    with loader.database.session() as sess:
+        overlapped_area = sess.query(
+            func.sum(parcels.proportion_water * parcels.geom.ST_Area())
+        ).scalar()
+        water_area = sess.query(func.sum(water.geom.ST_Area())).scalar()
+    assert overlapped_area <= water_area
+
+
+def test_invalid(loader):
+    # There are currently no invalid geometries in the sample data, so this
+    # is not a great test.
+    parcels = loader.database.tables.sample.heather_farms
+    invalid = spatialtoolz.invalid_geometry_diagnostic(parcels,
+                                                       parcels.parcel_id)
+    assert invalid.empty
+    invalid = spatialtoolz.invalid_geometry_diagnostic(parcels)
+    assert invalid.empty
+
+
+def test_reproject(loader):
     # Assert that SRIDs need to be reprojected.
     srids = get_srids(loader)
     assert srids != [loader.srid]
