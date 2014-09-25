@@ -48,7 +48,7 @@ def test_tag(loader):
 
     # Assert that all parcels have integer block groups.
     assert not parcels_df.bg_id.isnull().any()
-    assert parcels_df.bg_id.dtype == int
+    assert np.issubdtype(parcels_df.bg_id.dtype, int)
 
     # Assert that there are at least 10 unique parcel block groups.
     parcels_bg_ids = parcels_df.bg_id.unique()
@@ -109,5 +109,6 @@ def test_reproject(loader):
     tables = get_tables(loader)
     assert len(srids) == 1
     assert spatialtoolz.srid_equality(tables)
-    assert loader.srid and type(loader.srid) == int
+    assert loader.srid
+    assert np.issubdtype(type(loader.srid), int)
     assert srids == [loader.srid]
