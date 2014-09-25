@@ -28,7 +28,7 @@ setup(
         'GeoAlchemy2>=0.2.1', # Bug fix for schemas other than public.
         'pandas>=0.13.1',
         'psycopg2>=2.5',      # connection and cursor context managers.
-        'six',
+        'six>=1.4',           # Mapping for urllib.
         'SQLAlchemy>=0.8'     # GeoAlchemy2 support.
     ],
     extras_require={
