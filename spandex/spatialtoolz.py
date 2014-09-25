@@ -472,7 +472,7 @@ def conform_srids(schema=None):
     # that differ from project SRID.
     for schema_name, schema_obj in db.tables.__dict__.items():
         if not schema_name.startswith('_'):
-            if not schema or schema_obj.__name__ == schema_name:
+            if not schema or schema_name == schema.__name__:
                 for table_name, table in schema_obj.__dict__.items():
                     if not table_name.startswith('_'):
                         for c in table.__table__.columns:
