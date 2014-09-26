@@ -10,7 +10,7 @@ def from_geotiff(path_to_tif):
     with rasterio.drivers(CPL_DEBUG=True):
         with rasterio.open(path_to_tif) as src:
             b, g, r = src.read()
-            
+
         total = np.zeros(r.shape, dtype=rasterio.uint16)
         for band in r, g, b:
             total += band
@@ -33,8 +33,9 @@ def to_geotiff(array, src, path_to_tif):
 # Modified version of rasterstats function of same name.  Added functionality to
 # return the np array image of each geometry and apply arbitrary function instead
 # of precanned set.  See notebook in the spandex examples dir for example usage.
-def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None, nodata_value=None,
-                categorical=False, stats=None, copy_properties=False, all_touched=False, transform=None):
+def zonal_stats(vectors, raster, layer_num=0, band_num=1, func=None,
+                nodata_value=None, categorical=False, stats=None,
+                copy_properties=False, all_touched=False, transform=None):
 
     if not stats:
         if not categorical:

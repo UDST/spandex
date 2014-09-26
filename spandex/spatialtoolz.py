@@ -390,7 +390,7 @@ def db_to_df(query, index_name=None):
     # Convert Query object to DataFrame.
     entities = q.column_descriptions
     if (len(entities) == 1 and
-        isinstance(entities[0]['type'], DeclarativeMeta)):
+            isinstance(entities[0]['type'], DeclarativeMeta)):
         # If we query a table, column_descriptions refers to the table itself,
         # not its columns.
         table = q.column_descriptions[0]['type']
@@ -607,7 +607,7 @@ def load_multiple_delimited_files(files, config_filename=None):
     def subpath(base_dir):
         def func(shp_table_name, shp_path):
             input_dir = base_dir
-            return os.path.join(DataLoader().directory,input_dir, shp_table_name, shp_path)
+            return os.path.join(DataLoader().directory, input_dir, shp_table_name, shp_path)
         return func
     for category in files:
         path_func = subpath(category)
@@ -616,5 +616,5 @@ def load_multiple_delimited_files(files, config_filename=None):
             path = path_func(name, del_dict[name][0])
             table_name = del_dict[name][1]
             delimiter = del_dict[name][2]
-            print 'Loading %s as %s' % (del_dict[name][0], table_name)
+            print('Loading %s as %s' % (del_dict[name][0], table_name))
             load_delimited_file(path, table_name, delimiter=delimiter)

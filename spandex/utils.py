@@ -1,13 +1,12 @@
-import ConfigParser
 import json
 import logging
 import os
 import subprocess
-from urllib import urlencode
-from urllib2 import urlopen
 
 from osgeo import osr
 import psycopg2
+import six
+from six.moves import configparser, urllib
 
 from .database import database as db
 
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_config(config_filename=None):
-    """Returns a ConfigParser object.
+    """Returns a configparser object.
 
     Configuration is loaded from these filenames, in increasing precedence:
 
@@ -27,7 +26,7 @@ def load_config(config_filename=None):
       - config_filename argument, if provided
 
     If a file cannot be opened, it will be ignored. If none of the filenames
-    can be opened, the ConfigParser object will be empty.
+    can be opened, the configparser object will be empty.
 
     """
     # Build list of configuration filenames.
@@ -38,9 +37,9 @@ def load_config(config_filename=None):
     if config_filename:
         config_filenames.append(config_filename)
 
-    # Load configuration using ConfigParser.
+    # Load configuration using configparser.
     logger.debug("Loading configuration from %s" % config_filenames)
-    config = ConfigParser.RawConfigParser()
+    config = configparser.RawConfigParser()
     config.read(config_filenames)
     return config
 
@@ -50,8 +49,8 @@ def logf(level, f):
     for line in f:
         line = line.strip()
         if line:
-            if (line.startswith("Shapefile type: ") or
-                line.startswith("Postgis type: ")):
+            if (line.startswith(b"Shapefile type: ") or
+                    line.startswith(b"Postgis type: ")):
                 # Send usual shp2pgsql stderr messages to debug log.
                 logger.debug(line)
             else:
@@ -253,14 +252,15 @@ class DataLoader(object):
             return srid
 
         # Try querying prj2EPSG API.
-        params = urlencode({'terms': wkt, 'mode': 'wkt'})
-        resp = urlopen('http://prj2epsg.org/search.json?' + params)
+        params = urllib.parse.urlencode({'terms': wkt, 'mode': 'wkt'})
+        resp = urllib.request.urlopen('http://prj2epsg.org/search.json?'
+                                      + params)
         data = json.loads(resp.read())
         if data['exact']:
             # Successfully identified SRID.
             srid = int(data['codes'][0]['code'])
             logger.debug("prj2EPSG API returned SRID %s: %s"
-                        % (srid, filename))
+                         % (srid, filename))
             return srid
 
         # Unable to identify SRID.
@@ -327,10 +327,10 @@ class DataLoader(object):
                                                 stdout=subprocess.PIPE,
                                                 stderr=subprocess.PIPE)
                 try:
-                    command = ''
+                    command = b""
                     for line in create_table.stdout:
-                        if line and not (line.startswith('BEGIN') or
-                                         line.startswith('COMMIT')):
+                        if line and not (line.startswith(b"BEGIN") or
+                                         line.startswith(b"COMMIT")):
                             command += line
                     cur.execute(command)
                 finally:
@@ -347,7 +347,7 @@ class DataLoader(object):
             try:
                 while True:
                     line = append_data.stdout.readline()
-                    if line.startswith('COPY'):
+                    if line.startswith(b"COPY"):
                         break
                 cur.copy_expert(line, append_data.stdout)
             finally:
@@ -370,7 +370,7 @@ class DataLoader(object):
 
         """
         for (table, value) in mapping.items():
-            if isinstance(value, basestring):
+            if isinstance(value, six.string_types):
                 self.load_shp(filename=value, table=table, drop=True)
             else:
                 if 'drop' not in value:
@@ -430,8 +430,8 @@ def load_multiple_shp(shapefiles, config_filename=None):
         path_func = subpath(shape_category)
         shp_dict = shapefiles[shape_category]
         for shp_name in shp_dict:
-            print 'Loading %s.' % shp_name
+            print("Loading %s." % shp_name)
             path = path_func(shp_name, shp_dict[shp_name][0])
             loader.load_shp(filename=path,
-                table=shape_category + '_' + shp_name,
-                srid=shp_dict[shp_name][1], drop=True)
+                            table=shape_category + '_' + shp_name,
+                            srid=shp_dict[shp_name][1], drop=True)
