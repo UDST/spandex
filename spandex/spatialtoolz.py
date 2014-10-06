@@ -196,7 +196,6 @@ def calc_area(table):
 
 
 def invalid_geometry_diagnostic(table, column=None):
-    """"""
     """
     Return DataFrame with information on records with invalid geometry.
 
