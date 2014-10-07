@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Query
 
-from .database import database as db
+from .database import database as db, CreateTableAs
 from .utils import DataLoader
 
 
@@ -355,9 +355,63 @@ def exec_sql(query, params=None):
         cur.execute(query, params)
 
 
+def db_to_query(orm):
+    """Convert table or list of ORM objects to a query."""
+    if isinstance(orm, Query):
+        # Assume input is Query object.
+        return orm
+    elif hasattr(orm, '__iter__'):
+        # Assume input is list of ORM objects.
+        with db.session() as sess:
+            return sess.query(*orm)
+    else:
+        # Assume input is single ORM object.
+        with db.session() as sess:
+            return sess.query(orm)
+
+
+def db_to_db(query, name, schema, view=False):
+    """
+    Create a table or view from Query, table, or ORM objects, like columns.
+
+    Do not use to duplicate a table. The new table will not contain
+    indexes or constraints, including primary keys.
+
+    Parameters
+    ----------
+    query : sqlalchemy.orm.Query, sqlalchemy.ext.declarative.DeclarativeMeta,
+            or iterable
+        Query ORM object, table ORM class, or list of ORM objects to query,
+        like columns.
+    name : str
+        Name of table or view to create.
+    schema : schema class, optional
+        Schema of table to create. Defaults to public.
+    view : bool, optional
+        Whether to create a view instead of a table. Defaults to False.
+
+    Returns
+    -------
+    None
+
+    """
+    if schema:
+        schema_name = schema.__name__
+    else:
+        schema_name = 'public'
+    qualified_name = schema_name + "." + name
+
+    q = db_to_query(query)
+
+    # Create new table from results of the query.
+    with db.session() as sess:
+        sess.execute(CreateTableAs(qualified_name, q, view))
+    db.refresh()
+
+
 def db_to_df(query, index_name=None):
     """
-    Return DataFrame from Query, table, or list of ORM objects, like columns.
+    Return DataFrame from Query, table, or ORM objects, like columns.
 
     Parameters
     ----------
@@ -374,17 +428,7 @@ def db_to_df(query, index_name=None):
     df : pandas.DataFrame
 
     """
-    if isinstance(query, Query):
-        # Assume input is Query object.
-        q = query
-    elif hasattr(query, '__iter__'):
-        # Assume input is list of ORM objects.
-        with db.session() as sess:
-            q = sess.query(*query)
-    else:
-        # Assume input is single ORM object.
-        with db.session() as sess:
-            q = sess.query(query)
+    q = db_to_query(query)
 
     # Convert Query object to DataFrame.
     entities = q.column_descriptions

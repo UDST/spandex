@@ -5,8 +5,10 @@ from geoalchemy2 import Geometry  # Needed for database reflection. # noqa
 import psycopg2
 from sqlalchemy import create_engine
 from sqlalchemy.exc import ArgumentError
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql.expression import UpdateBase
 
 
 # Set up logging system.
@@ -187,3 +189,25 @@ class database(object):
         except:
             cls._session.rollback()
             raise
+
+
+class CreateTableAs(UpdateBase):
+    """Represents a ``CREATE TABLE/VIEW AS SELECT`` statement."""
+    def __init__(self, table_name, query, view=False):
+        assert '.' in table_name, "Table name should be schema-qualified."
+        self.table_name = table_name
+        self.query = query
+        self.view = view
+
+
+@compiles(CreateTableAs)
+def visit_create_table_as(element, compiler, *args, **kwargs):
+    if element.view:
+        store = "VIEW"
+    else:
+        store = "TABLE"
+    return "CREATE {store} {table} AS ({query})".format(
+        table=element.table_name,
+        store=store,
+        query=element.query.statement
+    )
