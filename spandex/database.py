@@ -1,10 +1,17 @@
 from contextlib import contextmanager
+import logging
 
 from geoalchemy2 import Geometry  # Needed for database reflection. # noqa
 import psycopg2
 from sqlalchemy import create_engine
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
+
+# Set up logging system.
+logging.basicConfig()
+logger = logging.getLogger(__name__)
 
 
 class database(object):
@@ -93,9 +100,14 @@ class database(object):
             schema = getattr(cls.tables, schema_name)
 
             # Create new table class.
-            table = type(str(name), (cls._model,),
-                         {'__table__': t,
-                          '__doc__': "Reflected GeoAlchemy table."})
+            try:
+                table = type(str(name), (cls._model,),
+                             {'__table__': t,
+                              '__doc__': "Reflected GeoAlchemy table."})
+            except ArgumentError as e:
+                # Warn and skip if unable to map table to class.
+                logger.warn('Unable to map table to class: {}'.format(e))
+                continue
 
             if hasattr(schema, table_name):
                 # Table class exists. Update by reassigning attributes.
