@@ -15,6 +15,7 @@ before_install:
   - sudo apt-get install -y python-gdal python-numpy python-psycopg2 python-sqlalchemy
 install:
   - pip install tox
+  - tox -e $TOX_ENV --notest
 before_script:
   - psql -U postgres -c 'CREATE DATABASE sample;'
 script:
