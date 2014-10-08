@@ -197,25 +197,27 @@ def calc_area(table):
 
 def calc_dist(table, geom):
     """
-    Calculate distance between a table of geometries and a single geometry.
+    Calculate distance between a table of geometries and a geometry column.
 
-    Calculates the minimum Cartesian distance in units of projection.
+    Calculates the minimum Cartesian distance in units of projection between
+    each geometry in the table and the nearest point in the geometry column.
     Geometries must have the same projection (SRID).
 
     Parameters
     ----------
     table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class with geom column to calculate distance from. Value is
-        stored in the calc_dist column, which is added if it does not exist.
+        stored in the calc_dist column, which is created if it does not exist.
     geom : sqlalchemy.orm.Query,
            sqlalchemy.orm.attributes.InstrumentedAttribute
-        Query ORM object or column ORM object to calculate distance to.
-        Must contain only one column and row.
+        ORM object to calculate distance to, like a column or query.
+        Must contain only one column. Rows are aggregated into a MULTI object
+        with ST_Collect (faster union that does not dissolve boundaries).
 
     Returns
     -------
     column : sqlalchemy.orm.attributes.InstrumentedAttribute
-        Column containing distances from the table to the single geometry.
+        Column containing distances from the table to the geometry column.
 
     """
     # Add calc_dist column if it does not already exist..
@@ -229,10 +231,15 @@ def calc_dist(table, geom):
     # Calculate geometric distance.
     try:
         with db.session() as sess:
-            destination = db_to_query(geom)
-            assert destination.one()
+            # Aggregate geometry column into single MULTI object.
+            multi = sess.query(
+                func.ST_Collect(
+                    db_to_query(geom).label('geom')
+                )
+            )
+            # Calculate distances from table geometries to MULTI object.
             sess.query(table).update(
-                {column: table.geom.ST_Distance(destination)},
+                {column: table.geom.ST_Distance(multi)},
                 synchronize_session=False
             )
         return column
