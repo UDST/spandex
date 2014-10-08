@@ -170,7 +170,7 @@ def srid_equality(tables):
 
 def calc_area(table):
     """
-    Calculate geometric area and store value in calc_area column.
+    Calculate area in units of projection and store value in calc_area column.
 
     """
     # Add calc_area column if it does not already exist..
@@ -188,6 +188,54 @@ def calc_area(table):
                 {column: table.geom.ST_Area()},
                 synchronize_session=False
             )
+    except:
+        # Remove column if it was freshly added and exception raised.
+        if column_added:
+            remove_column(column)
+        raise
+
+
+def calc_dist(table, geom):
+    """
+    Calculate distance between a table of geometries and a single geometry.
+
+    Calculates the minimum Cartesian distance in units of projection.
+    Geometries must have the same projection (SRID).
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class with geom column to calculate distance from. Value is
+        stored in the calc_dist column, which is added if it does not exist.
+    geom : sqlalchemy.orm.Query,
+           sqlalchemy.orm.attributes.InstrumentedAttribute
+        Query ORM object or column ORM object to calculate distance to.
+        Must contain only one column and row.
+
+    Returns
+    -------
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column containing distances from the table to the single geometry.
+
+    """
+    # Add calc_dist column if it does not already exist..
+    if 'calc_dist' in table.__table__.columns:
+        column_added = False
+        column = table.calc_dist
+    else:
+        column_added = True
+        column = add_column(table, 'calc_dist', 'float')
+
+    # Calculate geometric distance.
+    try:
+        with db.session() as sess:
+            destination = db_to_query(geom)
+            assert destination.one()
+            sess.query(table).update(
+                {column: table.geom.ST_Distance(destination)},
+                synchronize_session=False
+            )
+        return column
     except:
         # Remove column if it was freshly added and exception raised.
         if column_added:
