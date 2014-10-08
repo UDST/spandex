@@ -10,9 +10,6 @@ env:
     - TOX_ENV=py27
     - TOX_ENV=py34
     - TOX_ENV=flake8
-before_install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -y python-gdal python-numpy python-psycopg2 python-sqlalchemy
 install:
   - pip install tox
   - tox -e $TOX_ENV --notest
