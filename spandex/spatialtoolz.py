@@ -308,7 +308,7 @@ def calc_dist(table, geom):
         raise
 
 
-def geom_invalid(table, column=None):
+def geom_invalid(table, index=None):
     """
     Return DataFrame with information on records with invalid geometry.
 
@@ -319,7 +319,7 @@ def geom_invalid(table, column=None):
     ----------
     table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to diagnose.
-    column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
+    index : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
         Column ORM object to use as index.
 
     Returns
@@ -331,8 +331,8 @@ def geom_invalid(table, column=None):
     columns = [func.ST_IsSimple(table.geom).label('simple'),
                func.ST_IsValidReason(table.geom).label('reason'),
                table.geom]
-    if column:
-        columns.append(column)
+    if index:
+        columns.append(index)
 
     # Query information on rows with invalid geometries.
     with db.session() as sess:
@@ -343,8 +343,8 @@ def geom_invalid(table, column=None):
         )
 
     # Convert query to DataFrame.
-    if column:
-        df = db_to_df(q, index_name=column.name)
+    if index:
+        df = db_to_df(q, index_name=index.name)
     else:
         df = db_to_df(q)
     return df
