@@ -438,11 +438,11 @@ def geom_overlapping(table, key_name, output_table_name):
             # Alternatively, can use ST_Overlaps, ST_Contains, and ST_Within
             # to check for overlap instead of ST_Relate, but this was
             # slightly slower in my testing.
-            #or_(
-            #    table_a.geom.ST_Overlaps(table_b.geom),
-            #    table_a.geom.ST_Contains(table_b.geom),
-            #    table_a.geom.ST_Within(table_b.geom)
-            #)
+            # or_(
+            #     table_a.geom.ST_Overlaps(table_b.geom),
+            #     table_a.geom.ST_Contains(table_b.geom),
+            #     table_a.geom.ST_Within(table_b.geom)
+            # )
         )
 
     # Create new table from query. This table does not contain constraints,
