@@ -138,6 +138,64 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
         return update_df(df, column, target_table)
 
 
+def trim(target_col, trim_col):
+    """"
+    Trim target geometry by removing intersection with a trim column.
+
+    Parameters
+    ----------
+    target_col : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column ORM object to trim.
+    trim_col : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column ORM object to trim target column with.
+
+    Returns
+    -------
+    None
+
+    """
+    # TODO: Aggregate multiple rows in trim_col.
+    # Needs testing to make sure that ST_Difference can handle MultiPolygons
+    # without data loss.
+    with db.session() as sess:
+        data_type = target_col.property.columns[0].type
+        geom_type = data_type.geometry_type
+        if geom_type.lower() == "multipolygon":
+            # ST_Difference outputs Polygon, not MultiPolygon.
+            # Temporarily change the geometry data type to generic Geometry.
+            column_name = target_col.name
+            table_name = target_col.parent.tables[0].name
+            schema_name = target_col.parent.tables[0].schema
+            srid = data_type.srid
+            sess.execute("""
+                ALTER TABLE {schema}.{table} ALTER COLUMN {column}
+                SET DATA TYPE geometry(Geometry, {srid});
+            """.format(
+                schema=schema_name, table=table_name, column=column_name,
+                srid=srid)
+            )
+
+        # Update column value with ST_Difference if ST_Intersects.
+        table = target_col.parent
+        sess.query(table).filter(
+            target_col.ST_Intersects(trim_col)
+        ).update(
+            {target_col: target_col.ST_Difference(trim_col)},
+            synchronize_session=False
+        )
+
+        if geom_type.lower() == "multipolygon":
+            # Coerce the geometry data type back to MultiPolygon.
+            sess.execute("""
+                ALTER TABLE {schema}.{table} ALTER COLUMN {column}
+                SET DATA TYPE geometry(MultiPolygon, {srid})
+                USING ST_Multi(geom);
+            """.format(
+                schema=schema_name, table=table_name, column=column_name,
+                srid=srid)
+            )
+
+
 def srid_equality(tables):
     """
     Check whether there is only one projection in list of tables.
