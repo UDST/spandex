@@ -139,7 +139,7 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
 
 
 def trim(target_col, trim_col):
-    """"
+    """
     Trim target geometry by removing intersection with a trim column.
 
     Parameters
