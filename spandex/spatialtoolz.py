@@ -393,6 +393,31 @@ def geom_overlapping(table, key_name, output_table_name):
     db_to_db(q, output_table_name, schema)
 
 
+def geom_unfilled(table, output_table_name):
+    # Query rows containing geometries with interior rings.
+    # Add column for unfilled geometry.
+    # WIP: Ignore unfilled areas that are overlapped by another row.
+    with db.session() as sess:
+        q = sess.query(
+            table,
+            func.ST_Difference(
+                func.ST_MakePolygon(
+                    func.ST_ExteriorRing(
+                        func.ST_Dump(table.geom).geom
+                    )
+                ),
+                table.geom
+            ).label('unfilled')
+        ).filter(
+            func.ST_NRings(table.geom) > 1,
+        )
+
+    # Create new table from query. This table does not contain constraints,
+    # such as primary keys.
+    schema = getattr(db.tables, table.__table__.schema)
+    db_to_db(q, output_table_name, schema)
+
+
 def update_df(df, column, table):
     """
     Add or update column in DataFrame from database table.
