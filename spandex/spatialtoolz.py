@@ -611,7 +611,7 @@ def db_to_query(orm):
             return sess.query(orm)
 
 
-def db_to_db(query, name, schema, view=False):
+def db_to_db(query, name, schema=None, view=False):
     """
     Create a table or view from Query, table, or ORM objects, like columns.
 
