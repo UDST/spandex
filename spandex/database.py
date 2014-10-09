@@ -209,5 +209,5 @@ def visit_create_table_as(element, compiler, *args, **kwargs):
     return "CREATE {store} {table} AS ({query})".format(
         table=element.table_name,
         store=store,
-        query=element.query.statement
+        query=compiler.process(element.query.statement)
     )
