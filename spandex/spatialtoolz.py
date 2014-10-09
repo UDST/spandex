@@ -306,11 +306,18 @@ def duplicate_stacked_geometry_diagnostic(table):
     df : pandas.DataFrame
 
     """
+    # Create table aliases to cross join table to self.
+    table_a = aliased(table)
+    table_b = aliased(table)
+
     # Query rows with duplicate geometries.
     with db.session() as sess:
-        geoms = sess.query(table.geom).having(
-            func.count(table.geom) > 1
-        ).group_by(table.geom)
+        geoms = sess.query(
+            table_a.geom
+        ).filter(
+            table_a.gid < table_b.gid,
+            func.ST_Equals(table_a.geom, table_b.geom)
+        )
         rows = sess.query(table).filter(
             table.geom.in_(geoms)
         )
