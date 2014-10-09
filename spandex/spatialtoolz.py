@@ -5,7 +5,7 @@ from geoalchemy2 import Geometry
 import pandas as pd
 from sqlalchemy import func
 from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import aliased, Query
 
 from .database import database as db, CreateTableAs
 from .utils import DataLoader
@@ -318,6 +318,72 @@ def duplicate_stacked_geometry_diagnostic(table):
     # Convert query to DataFrame.
     df = db_to_df(rows)
     return df
+
+
+def geom_overlapping(table, key_name, output_table_name):
+    """
+    Export overlapping geometries from a table into another table.
+
+    The exported table contains the following columns:
+        key_name_a, key_name_b: identifiers of the overlapping pair
+        relation: DE-9IM representation of their spatial relation
+        geom_a, geom_b: corresponding geometries
+        overlap: 2D overlapping region (polygons)
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class to query for overlapping geometries.
+    key_name : str
+        Name of column in the queried table containing a unique identifier,
+        such as a primary key, to use for cross join and to identify
+        geometries in the exported table.
+    output_table_name : str
+        Name of exported table. Table is created in the same schema as
+        the queried table.
+
+    Returns
+    -------
+    None
+
+    """
+    # Create table aliases to cross join table to self.
+    table_a = aliased(table)
+    table_b = aliased(table)
+    table_a_key = getattr(table_a, key_name).label(key_name + '_a')
+    table_b_key = getattr(table_b, key_name).label(key_name + '_b')
+
+    # Query for overlaps.
+    with db.session() as sess:
+        q = sess.query(
+            table_a_key, table_b_key,
+            func.ST_Relate(table_a.geom, table_b.geom).label('relation'),
+            table_a.geom.label('geom_a'), table_b.geom.label('geom_b'),
+            # Extract only polygon geometries from intersection.
+            func.ST_CollectionExtract(
+                func.ST_Intersection(table_a.geom, table_b.geom),
+                3
+            ).label('overlap')
+        ).filter(
+            # Use "<" instead of "!=" to prevent duplicates and save time.
+            table_a_key < table_b_key,
+            func.ST_Intersects(table_a.geom, table_b.geom),
+            # Polygon interiors must not intersect.
+            ~func.ST_Relate(table_a.geom, table_b.geom, 'FF*F*****')
+            # Alternatively, can use ST_Overlaps, ST_Contains, and ST_Within
+            # to check for overlap instead of ST_Relate, but this was
+            # slightly slower in my testing.
+            #or_(
+            #    table_a.geom.ST_Overlaps(table_b.geom),
+            #    table_a.geom.ST_Contains(table_b.geom),
+            #    table_a.geom.ST_Within(table_b.geom)
+            #)
+        )
+
+    # Create new table from query. This table does not contain constraints,
+    # such as primary keys.
+    schema = getattr(db.tables, table.__table__.schema)
+    db_to_db(q, output_table_name, schema)
 
 
 def update_df(df, column, table):
