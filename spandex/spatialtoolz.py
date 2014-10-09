@@ -230,6 +230,16 @@ def calc_area(table):
     """
     Calculate area in units of projection and store value in calc_area column.
 
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class with geom column to calculate area for. Value is
+        stored in the calc_area column, which is created if it does not exist.
+
+    Returns
+    -------
+    None
+
     """
     # Add calc_area column if it does not already exist..
     if 'calc_area' in table.__table__.columns:
@@ -452,9 +462,29 @@ def geom_overlapping(table, key_name, output_table_name):
 
 
 def geom_unfilled(table, output_table_name):
+    """
+    Export rows containing interior rings into another table.
+
+    Include the unfilled geometry in the exported table as a new column
+    named "unfilled".
+
+    Parameters
+    ----------
+     table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class to query for rows containing geometries with
+        interior rings.
+    output_table_name : str
+        Name of exported table. Table is created in the same schema as
+        the queried table.
+
+    Returns
+    -------
+    None
+
+    """
     # Query rows containing geometries with interior rings.
-    # Add column for unfilled geometry.
-    # WIP: Ignore unfilled areas that are overlapped by another row.
+    # Add column for unfilled geometry (outer polygon - polygon).
+    # TODO: Ignore unfilled areas that are overlapped by another row.
     with db.session() as sess:
         q = sess.query(
             table,
