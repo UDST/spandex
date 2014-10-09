@@ -250,7 +250,7 @@ def calc_dist(table, geom):
         raise
 
 
-def invalid_geometry_diagnostic(table, column=None):
+def geom_invalid(table, column=None):
     """
     Return DataFrame with information on records with invalid geometry.
 
@@ -292,7 +292,7 @@ def invalid_geometry_diagnostic(table, column=None):
     return df
 
 
-def duplicate_stacked_geometry_diagnostic(table):
+def geom_duplicate(table):
     """
     Return DataFrame with all records that have identical, stacked geometry.
 

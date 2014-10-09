@@ -89,10 +89,9 @@ def test_invalid(loader):
     # There are currently no invalid geometries in the sample data, so this
     # is not a great test.
     parcels = loader.database.tables.sample.heather_farms
-    invalid = spatialtoolz.invalid_geometry_diagnostic(parcels,
-                                                       parcels.parcel_id)
+    invalid = spatialtoolz.geom_invalid(parcels, parcels.parcel_id)
     assert invalid.empty
-    invalid = spatialtoolz.invalid_geometry_diagnostic(parcels)
+    invalid = spatialtoolz.geom_invalid(parcels)
     assert invalid.empty
 
 
