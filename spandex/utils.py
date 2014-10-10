@@ -271,7 +271,7 @@ class DataLoader(object):
         params = urllib.parse.urlencode({'terms': wkt, 'mode': 'wkt'})
         resp = urllib.request.urlopen('http://prj2epsg.org/search.json?'
                                       + params)
-        data = json.loads(resp.read())
+        data = json.load(resp)
         if data['exact']:
             # Successfully identified SRID.
             srid = int(data['codes'][0]['code'])
