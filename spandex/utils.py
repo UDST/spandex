@@ -3,10 +3,10 @@ import logging
 import os
 import subprocess
 
-from osgeo import osr
 import psycopg2
 import six
 from six.moves import configparser, urllib
+from sqlalchemy import func
 
 from .database import database as db
 
@@ -14,6 +14,16 @@ from .database import database as db
 # Set up logging system.
 logging.basicConfig()
 logger = logging.getLogger(__name__)
+
+
+# Import from GDAL if available.
+try:
+    from osgeo import osr
+except ImportError:
+    logger.warn("GDAL bindings not available. No custom projection support.")
+    gdal = False
+else:
+    gdal = True
 
 
 def load_config(config_filename=None):
@@ -216,18 +226,23 @@ class DataLoader(object):
         return encoding
 
     def get_srid(self, filename):
-        """Identify shapefile EPSG SRID using GDAL and prj2EPSG API.
+        """Identify shapefile SRID using GDAL and prj2EPSG API.
 
         Try to identify the SRID of a shapefile by reading the
-        projection information of the prj file and matching it to an
-        EPSG SRID. Try GDAL and prj2EPSG API in order before returning
-        None if a match was not found.
+        projection information of the prj file and matching to an
+        EPSG SRID using GDAL and the prj2EPSG API.
+
+        If the prj file cannot be read, warn and return 0,
+        which is the default SRID in PostGIS 2.0+.
+
+        If no match is found, define a custom projection in the
+        spatial_ref_sys table and return its SRID.
 
         Args:
             filename: Shapefile, relative to the data directory.
 
         Returns:
-            srid: SRID, if identified, otherwise None.
+            srid: EPSG, custom SRID, or 0.
 
         """
         # Read projection information from shapefile prj file.
@@ -235,27 +250,28 @@ class DataLoader(object):
         prj_filepath = os.path.splitext(filepath)[0] + '.prj'
         try:
             with open(prj_filepath) as prj_file:
-                wkt = prj_file.read()
+                wkt = prj_file.read().strip()
         except IOError:
             logger.warn("Unable to open projection information: %s"
                         % filename)
-            return
+            return 0
 
         # Attempt to identify EPSG SRID using GDAL.
-        sr = osr.SpatialReference()
-        sr.ImportFromESRI([wkt])
-        res = sr.AutoIdentifyEPSG()
-        if res == 0:
-            # Successfully identified SRID.
-            srid = int(sr.GetAuthorityCode(None))
-            logger.debug("GDAL returned SRID %s: %s" % (srid, filename))
-            return srid
+        if gdal:
+            sr = osr.SpatialReference()
+            sr.ImportFromESRI([wkt])
+            res = sr.AutoIdentifyEPSG()
+            if res == 0:
+                # Successfully identified SRID.
+                srid = int(sr.GetAuthorityCode(None))
+                logger.debug("GDAL returned SRID %s: %s" % (srid, filename))
+                return srid
 
         # Try querying prj2EPSG API.
         params = urllib.parse.urlencode({'terms': wkt, 'mode': 'wkt'})
         resp = urllib.request.urlopen('http://prj2epsg.org/search.json?'
                                       + params)
-        data = json.loads(resp.read())
+        data = json.load(resp)
         if data['exact']:
             # Successfully identified SRID.
             srid = int(data['codes'][0]['code'])
@@ -263,8 +279,26 @@ class DataLoader(object):
                          % (srid, filename))
             return srid
 
-        # Unable to identify SRID.
-        logger.warn("Unable to identify SRID: %s" % filename)
+        # Unable to identify EPSG SRID. Use custom SRID.
+        srs = self.database.tables.public.spatial_ref_sys
+        with self.database.session() as sess:
+            srid = sess.query(srs.srid).filter(srs.srtext == wkt).first()[0]
+        if not srid:
+            if gdal:
+                # Need to define custom projection since not in database.
+                logger.warn("Defining custom projection: %s" % filename)
+                proj4 = sr.ExportToProj4().strip()
+                with self.database.session() as sess:
+                    srid = sess.query(func.max(srs.srid)).one()[0] + 1
+                    projection = srs(srid=srid,
+                                     auth_name="custom", auth_srid=srid,
+                                     srtext=wkt, proj4text=proj4)
+                    sess.add(projection)
+                srid = projection.srid
+            else:
+                raise RuntimeError("No GDAL: unable to define projection.")
+        logger.debug("Using custom SRID %s: %s" % (srid, filename))
+        return srid
 
     def load_shp(self, filename, table, srid=None, encoding=None,
                  drop=False, append=False):
