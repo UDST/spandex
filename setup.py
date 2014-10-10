@@ -24,7 +24,6 @@ setup(
     ],
     packages=find_packages(exclude=['*.tests']),
     install_requires=[
-        'GDAL>=1.7',           # Python 3 support.
         'GeoAlchemy2>=0.2.1',  # Bug fix for schemas other than public.
         'pandas>=0.13.1',
         'psycopg2>=2.5',       # connection and cursor context managers.
@@ -32,6 +31,7 @@ setup(
         'SQLAlchemy>=0.8'      # GeoAlchemy2 support.
     ],
     extras_require={
+        'prj': ['GDAL>=1.7'],  # Python 3 support.
         'rastertoolz': ['numpy>=1.8.0', 'rasterio>=0.12', 'rasterstats>=0.4',
                         'shapely>=1.3.2']
     }
