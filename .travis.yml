@@ -1,14 +1,30 @@
 language: python
 python:
-- '2.7'
+  - '2.7'
+  - '3.4'
+addons:
+  postgresql: "9.3"
 env:
-- TOX_ENV=py27
-- TOX_ENV=py34
-- TOX_ENV=flake8
+  - SPANDEX_CFG=config/example.cfg
+before_install:
+  - >
+    if [[ "$TRAVIS_PYTHON_VERSION" == '2.7' ]]; then
+      wget http://repo.continuum.io/miniconda/Miniconda-3.7.0-Linux-x86_64.sh -O miniconda.sh
+    else
+      wget http://repo.continuum.io/miniconda/Miniconda3-3.7.0-Linux-x86_64.sh -O miniconda.sh
+    fi
+  - chmod +x miniconda.sh
+  - ./miniconda.sh -b -p "$HOME/miniconda"
+  - export PATH="$HOME/miniconda/bin:$PATH"
+  - conda config --set always_yes yes --set changeps1 no
+  - conda update -q conda
+  - conda info -a
+  - conda install -q coverage gdal flake8 numpy pandas pip pytest sqlalchemy six
+  - pip install pytest-cov
 install:
-- sudo apt-get install python-gdal python-numpy python-psycopg2 python-sqlalchemy
-- pip install tox
+  - pip install .
+before_script:
+  - psql -U postgres -c 'CREATE DATABASE sample;'
 script:
-- tox -e $TOX_ENV
-after_success:
-- coveralls
+  - py.test --cov "$HOME/miniconda/lib/python2.7/site-packages/spandex" --cov-report term-missing
+  - flake8 spandex

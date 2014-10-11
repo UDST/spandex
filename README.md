@@ -1,4 +1,5 @@
 # spandex
+[![Build Status](https://magnum.travis-ci.com/daradib/spandex.svg?token=git8En8mdsEyvKfCCzyy)](https://magnum.travis-ci.com/daradib/spandex)
 
 ## Spatial Analysis and Data Exploration
 

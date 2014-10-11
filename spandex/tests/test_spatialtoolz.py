@@ -97,13 +97,6 @@ def test_invalid(loader):
 
 
 def test_reproject(loader):
-    # Assert that SRIDs need to be reprojected.
-    srids = get_srids(loader)
-    assert srids != [loader.srid]
-
-    # Reproject all non-conforming SRIDs into project SRID.
-    spatialtoolz.conform_srids(schema=loader.database.tables.sample)
-
     # Assert that all SRIDs are consistent and match defined project SRID.
     srids = get_srids(loader)
     tables = get_tables(loader)

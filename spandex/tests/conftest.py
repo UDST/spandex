@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+from spandex.spatialtoolz import conform_srids
 from spandex.utils import DataLoader
 
 
@@ -29,6 +30,9 @@ def loader(request):
             shp_path = os.path.join(data_path, filename)
             table_name = 'sample.' + file_root
             loader.load_shp(shp_path, table_name)
+
+    # Reproject all non-conforming SRIDs into project SRID.
+    conform_srids(schema=loader.database.tables.sample)
 
     # Tear down sample schema when done.
     def teardown():
