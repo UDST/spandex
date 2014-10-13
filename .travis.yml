@@ -28,3 +28,6 @@ before_script:
 script:
   - py.test --cov "$HOME/miniconda/lib/python2.7/site-packages/spandex" --cov-report term-missing
   - flake8 spandex
+notifications:
+  slack:
+    secure: ia48o+o3Cdm7SznMqfpMCtFJXxK6/LUv2LYfTGkAyRaaI1WWqRJPo4RIn+oSCr8gO6gLHMfF7+8WOf87THsd8STUsc1koitZRZ4/uxZmfQ4tSzS17IjUgV7k//kvpvl0wn80tySUuLwfx4lLf6hczJ9L0THvfmVhY1k6FLJYcAM=
