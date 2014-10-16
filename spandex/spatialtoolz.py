@@ -507,10 +507,12 @@ def vacuum(table):
     with db.connection() as conn:
         assert conn.autocommit is False
         conn.autocommit = True
-        with conn.cursor() as cur:
-            cur.execute("VACUUM ANALYZE {schema}.{table};".format(
-                schema=t.schema, table=t.name))
-        conn.autocommit = False
+        try:
+            with conn.cursor() as cur:
+                cur.execute("VACUUM ANALYZE {schema}.{table};".format(
+                    schema=t.schema, table=t.name))
+        finally:
+            conn.autocommit = False
 
 
 def load_delimited_file(file_path, table_name, delimiter=',', append=False):
