@@ -6,7 +6,7 @@ from spandex.spatialtoolz import conform_srids
 from spandex.utils import DataLoader
 
 
-@pytest.fixture(scope='function', autouse=True)
+@pytest.fixture(scope='function')
 def loader(request):
     """Recreate sample schema from shapefiles and tear down when done."""
     # Configure DataLoader to use data directory containing sample shapefiles.
