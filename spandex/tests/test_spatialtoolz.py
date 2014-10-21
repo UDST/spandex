@@ -85,14 +85,72 @@ def test_proportion_overlap(loader):
     assert overlapped_area <= water_area
 
 
+def test_trim(loader):
+    def calc_overlap(geom_a, geom_b):
+        """Calculate area of overlap between two geometry columns."""
+        with loader.database.session() as sess:
+            q = sess.query(
+                func.sum(
+                    func.ST_Intersection(geom_a, geom_b).ST_Area()
+                )
+            ).filter(
+                func.ST_Intersects(geom_a, geom_b)
+            )
+        return q.scalar()
+
+    parcels = loader.database.tables.sample.heather_farms
+    water = loader.database.tables.sample.hf_water
+
+    # Assert that some parcel areas overlap water.
+    assert calc_overlap(parcels.geom, water.geom) > 0
+
+    # Calculate total areas and number of parcels for comparison after trim.
+    with loader.database.session() as sess:
+        area_parcel_0 = sess.query(func.sum(parcels.geom.ST_Area())).scalar()
+        area_water_0 = sess.query(func.sum(water.geom.ST_Area())).scalar()
+        num_parcel_0 = sess.query(parcels.geom).filter(
+            parcels.geom.isnot(None)
+        ).count()
+
+    # Trim away parcel areas that are water.
+    spatialtoolz.trim(parcels.geom, water.geom)
+
+    # Assert that all parcel geometries are still valid.
+    invalid = spatialtoolz.geom_invalid(parcels)
+    assert invalid.empty
+
+    # Assert that all parcel geometries have area, i.e. no deleted geometries.
+    with loader.database.session() as sess:
+        q = sess.query(parcels).filter(parcels.geom.ST_Area() < 0.1)
+        assert q.count() == 0
+
+    # Recalculate total areas and number of parcels.
+    with loader.database.session() as sess:
+        area_parcel = sess.query(func.sum(parcels.geom.ST_Area())).scalar()
+        area_water = sess.query(func.sum(water.geom.ST_Area())).scalar()
+        num_parcel = sess.query(parcels.geom).filter(
+            parcels.geom.isnot(None)
+        ).count()
+
+    # Assert that water area and number of parcels has not changed.
+    assert area_water == area_water_0
+    assert num_parcel == num_parcel_0
+
+    # Assert that new parcel area is at least 50% of old parcel area.
+    area_parcel > 0.5 * area_parcel_0
+    area_parcel < area_parcel_0
+
+    # Assert that there is no parcel area overlapping water.
+    assert calc_overlap(parcels.geom, water.geom) < 0.1
+
+
 def test_invalid(loader):
     # There are currently no invalid geometries in the sample data, so this
     # is not a great test.
     parcels = loader.database.tables.sample.heather_farms
-    invalid = spatialtoolz.invalid_geometry_diagnostic(parcels,
-                                                       parcels.parcel_id)
+    invalid = spatialtoolz.geom_invalid(parcels, parcels.parcel_id)
     assert invalid.empty
-    invalid = spatialtoolz.invalid_geometry_diagnostic(parcels)
+    invalid = spatialtoolz.geom_invalid(parcels)
     assert invalid.empty
 
 

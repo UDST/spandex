@@ -5,9 +5,9 @@ from geoalchemy2 import Geometry
 import pandas as pd
 from sqlalchemy import func
 from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import aliased, Query
 
-from .database import database as db
+from .database import database as db, CreateTableAs
 from .utils import DataLoader
 
 
@@ -138,6 +138,64 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
         return update_df(df, column, target_table)
 
 
+def trim(target_col, trim_col):
+    """
+    Trim target geometry by removing intersection with a trim column.
+
+    Parameters
+    ----------
+    target_col : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column ORM object to trim.
+    trim_col : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column ORM object to trim target column with.
+
+    Returns
+    -------
+    None
+
+    """
+    # TODO: Aggregate multiple rows in trim_col.
+    # Needs testing to make sure that ST_Difference can handle MultiPolygons
+    # without data loss.
+    with db.session() as sess:
+        data_type = target_col.property.columns[0].type
+        geom_type = data_type.geometry_type
+        if geom_type.lower() == "multipolygon":
+            # ST_Difference outputs Polygon, not MultiPolygon.
+            # Temporarily change the geometry data type to generic Geometry.
+            column_name = target_col.name
+            table_name = target_col.parent.tables[0].name
+            schema_name = target_col.parent.tables[0].schema
+            srid = data_type.srid
+            sess.execute("""
+                ALTER TABLE {schema}.{table} ALTER COLUMN {column}
+                SET DATA TYPE geometry(Geometry, {srid});
+            """.format(
+                schema=schema_name, table=table_name, column=column_name,
+                srid=srid)
+            )
+
+        # Update column value with ST_Difference if ST_Intersects.
+        table = target_col.parent
+        sess.query(table).filter(
+            target_col.ST_Intersects(trim_col)
+        ).update(
+            {target_col: target_col.ST_Difference(trim_col)},
+            synchronize_session=False
+        )
+
+        if geom_type.lower() == "multipolygon":
+            # Coerce the geometry data type back to MultiPolygon.
+            sess.execute("""
+                ALTER TABLE {schema}.{table} ALTER COLUMN {column}
+                SET DATA TYPE geometry(MultiPolygon, {srid})
+                USING ST_Multi(geom);
+            """.format(
+                schema=schema_name, table=table_name, column=column_name,
+                srid=srid)
+            )
+
+
 def srid_equality(tables):
     """
     Check whether there is only one projection in list of tables.
@@ -170,7 +228,17 @@ def srid_equality(tables):
 
 def calc_area(table):
     """
-    Calculate geometric area and store value in calc_area column.
+    Calculate area in units of projection and store value in calc_area column.
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class with geom column to calculate area for. Value is
+        stored in the calc_area column, which is created if it does not exist.
+
+    Returns
+    -------
+    None
 
     """
     # Add calc_area column if it does not already exist..
@@ -195,7 +263,62 @@ def calc_area(table):
         raise
 
 
-def invalid_geometry_diagnostic(table, column=None):
+def calc_dist(table, geom):
+    """
+    Calculate distance between a table of geometries and a geometry column.
+
+    Calculates the minimum Cartesian distance in units of projection between
+    each geometry in the table and the nearest point in the geometry column.
+    Geometries must have the same projection (SRID).
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class with geom column to calculate distance from. Value is
+        stored in the calc_dist column, which is created if it does not exist.
+    geom : sqlalchemy.orm.Query,
+           sqlalchemy.orm.attributes.InstrumentedAttribute
+        ORM object to calculate distance to, like a column or query.
+        Must contain only one column. Rows are aggregated into a MULTI object
+        with ST_Collect (faster union that does not dissolve boundaries).
+
+    Returns
+    -------
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute
+        Column containing distances from the table to the geometry column.
+
+    """
+    # Add calc_dist column if it does not already exist..
+    if 'calc_dist' in table.__table__.columns:
+        column_added = False
+        column = table.calc_dist
+    else:
+        column_added = True
+        column = add_column(table, 'calc_dist', 'float')
+
+    # Calculate geometric distance.
+    try:
+        with db.session() as sess:
+            # Aggregate geometry column into single MULTI object.
+            multi = sess.query(
+                func.ST_Collect(
+                    db_to_query(geom).label('geom')
+                )
+            )
+            # Calculate distances from table geometries to MULTI object.
+            sess.query(table).update(
+                {column: table.geom.ST_Distance(multi)},
+                synchronize_session=False
+            )
+        return column
+    except:
+        # Remove column if it was freshly added and exception raised.
+        if column_added:
+            remove_column(column)
+        raise
+
+
+def geom_invalid(table, index=None):
     """
     Return DataFrame with information on records with invalid geometry.
 
@@ -206,7 +329,7 @@ def invalid_geometry_diagnostic(table, column=None):
     ----------
     table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to diagnose.
-    column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
+    index : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
         Column ORM object to use as index.
 
     Returns
@@ -218,8 +341,8 @@ def invalid_geometry_diagnostic(table, column=None):
     columns = [func.ST_IsSimple(table.geom).label('simple'),
                func.ST_IsValidReason(table.geom).label('reason'),
                table.geom]
-    if column:
-        columns.append(column)
+    if index:
+        columns.append(index)
 
     # Query information on rows with invalid geometries.
     with db.session() as sess:
@@ -230,14 +353,14 @@ def invalid_geometry_diagnostic(table, column=None):
         )
 
     # Convert query to DataFrame.
-    if column:
-        df = db_to_df(q, index_name=column.name)
+    if index:
+        df = db_to_df(q, index_name=index.name)
     else:
         df = db_to_df(q)
     return df
 
 
-def duplicate_stacked_geometry_diagnostic(table):
+def geom_duplicate(table):
     """
     Return DataFrame with all records that have identical, stacked geometry.
 
@@ -251,11 +374,18 @@ def duplicate_stacked_geometry_diagnostic(table):
     df : pandas.DataFrame
 
     """
+    # Create table aliases to cross join table to self.
+    table_a = aliased(table)
+    table_b = aliased(table)
+
     # Query rows with duplicate geometries.
     with db.session() as sess:
-        geoms = sess.query(table.geom).having(
-            func.count(table.geom) > 1
-        ).group_by(table.geom)
+        geoms = sess.query(
+            table_a.geom
+        ).filter(
+            table_a.gid < table_b.gid,
+            func.ST_Equals(table_a.geom, table_b.geom)
+        )
         rows = sess.query(table).filter(
             table.geom.in_(geoms)
         )
@@ -263,6 +393,117 @@ def duplicate_stacked_geometry_diagnostic(table):
     # Convert query to DataFrame.
     df = db_to_df(rows)
     return df
+
+
+def geom_overlapping(table, key_name, output_table_name):
+    """
+    Export overlapping geometries from a table into another table.
+
+    The exported table contains the following columns:
+        key_name_a, key_name_b: identifiers of the overlapping pair
+        relation: DE-9IM representation of their spatial relation
+        geom_a, geom_b: corresponding geometries
+        overlap: 2D overlapping region (polygons)
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class to query for overlapping geometries.
+    key_name : str
+        Name of column in the queried table containing a unique identifier,
+        such as a primary key, to use for cross join and to identify
+        geometries in the exported table.
+    output_table_name : str
+        Name of exported table. Table is created in the same schema as
+        the queried table.
+
+    Returns
+    -------
+    None
+
+    """
+    # Create table aliases to cross join table to self.
+    table_a = aliased(table)
+    table_b = aliased(table)
+    table_a_key = getattr(table_a, key_name).label(key_name + '_a')
+    table_b_key = getattr(table_b, key_name).label(key_name + '_b')
+
+    # Query for overlaps.
+    with db.session() as sess:
+        q = sess.query(
+            table_a_key, table_b_key,
+            func.ST_Relate(table_a.geom, table_b.geom).label('relation'),
+            table_a.geom.label('geom_a'), table_b.geom.label('geom_b'),
+            # Extract only polygon geometries from intersection.
+            func.ST_CollectionExtract(
+                func.ST_Intersection(table_a.geom, table_b.geom),
+                3
+            ).label('overlap')
+        ).filter(
+            # Use "<" instead of "!=" to prevent duplicates and save time.
+            table_a_key < table_b_key,
+            func.ST_Intersects(table_a.geom, table_b.geom),
+            # Polygon interiors must not intersect.
+            ~func.ST_Relate(table_a.geom, table_b.geom, 'FF*F*****')
+            # Alternatively, can use ST_Overlaps, ST_Contains, and ST_Within
+            # to check for overlap instead of ST_Relate, but this was
+            # slightly slower in my testing.
+            # or_(
+            #     table_a.geom.ST_Overlaps(table_b.geom),
+            #     table_a.geom.ST_Contains(table_b.geom),
+            #     table_a.geom.ST_Within(table_b.geom)
+            # )
+        )
+
+    # Create new table from query. This table does not contain constraints,
+    # such as primary keys.
+    schema = getattr(db.tables, table.__table__.schema)
+    db_to_db(q, output_table_name, schema)
+
+
+def geom_unfilled(table, output_table_name):
+    """
+    Export rows containing interior rings into another table.
+
+    Include the unfilled geometry in the exported table as a new column
+    named "unfilled".
+
+    Parameters
+    ----------
+     table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class to query for rows containing geometries with
+        interior rings.
+    output_table_name : str
+        Name of exported table. Table is created in the same schema as
+        the queried table.
+
+    Returns
+    -------
+    None
+
+    """
+    # Query rows containing geometries with interior rings.
+    # Add column for unfilled geometry (outer polygon - polygon).
+    # TODO: Ignore unfilled areas that are overlapped by another row.
+    with db.session() as sess:
+        q = sess.query(
+            table,
+            func.ST_Difference(
+                func.ST_MakePolygon(
+                    func.ST_ExteriorRing(
+                        func.ST_Dump(table.geom).geom
+                    )
+                ),
+                table.geom
+            ).label('unfilled')
+        ).filter(
+            func.ST_NRings(table.geom) > 1,
+        )
+
+    # Create new table from query. This table does not contain constraints,
+    # such as primary keys.
+    schema = getattr(db.tables, table.__table__.schema)
+    db_to_db(q, output_table_name, schema)
 
 
 def update_df(df, column, table):
@@ -355,9 +596,63 @@ def exec_sql(query, params=None):
         cur.execute(query, params)
 
 
+def db_to_query(orm):
+    """Convert table or list of ORM objects to a query."""
+    if isinstance(orm, Query):
+        # Assume input is Query object.
+        return orm
+    elif hasattr(orm, '__iter__'):
+        # Assume input is list of ORM objects.
+        with db.session() as sess:
+            return sess.query(*orm)
+    else:
+        # Assume input is single ORM object.
+        with db.session() as sess:
+            return sess.query(orm)
+
+
+def db_to_db(query, name, schema=None, view=False):
+    """
+    Create a table or view from Query, table, or ORM objects, like columns.
+
+    Do not use to duplicate a table. The new table will not contain
+    indexes or constraints, including primary keys.
+
+    Parameters
+    ----------
+    query : sqlalchemy.orm.Query, sqlalchemy.ext.declarative.DeclarativeMeta,
+            or iterable
+        Query ORM object, table ORM class, or list of ORM objects to query,
+        like columns.
+    name : str
+        Name of table or view to create.
+    schema : schema class, optional
+        Schema of table to create. Defaults to public.
+    view : bool, optional
+        Whether to create a view instead of a table. Defaults to False.
+
+    Returns
+    -------
+    None
+
+    """
+    if schema:
+        schema_name = schema.__name__
+    else:
+        schema_name = 'public'
+    qualified_name = schema_name + "." + name
+
+    q = db_to_query(query)
+
+    # Create new table from results of the query.
+    with db.session() as sess:
+        sess.execute(CreateTableAs(qualified_name, q, view))
+    db.refresh()
+
+
 def db_to_df(query, index_name=None):
     """
-    Return DataFrame from Query, table, or list of ORM objects, like columns.
+    Return DataFrame from Query, table, or ORM objects, like columns.
 
     Parameters
     ----------
@@ -374,17 +669,7 @@ def db_to_df(query, index_name=None):
     df : pandas.DataFrame
 
     """
-    if isinstance(query, Query):
-        # Assume input is Query object.
-        q = query
-    elif hasattr(query, '__iter__'):
-        # Assume input is list of ORM objects.
-        with db.session() as sess:
-            q = sess.query(*query)
-    else:
-        # Assume input is single ORM object.
-        with db.session() as sess:
-            q = sess.query(query)
+    q = db_to_query(query)
 
     # Convert Query object to DataFrame.
     entities = q.column_descriptions
