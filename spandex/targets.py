@@ -41,27 +41,6 @@ def apply_filter_query(df, filters=None):
         return df
 
 
-def update_series(s1, s2):
-    """
-    Update values in one Series from another Series without modifying either.
-
-    Parameters
-    ----------
-    s1, s2 : pandas.Series
-
-    Returns
-    -------
-    pandas.Series
-
-    """
-    s = s1.astype(s2.dtype)
-
-    for k, v in s2.iteritems():
-        s[k] = v
-
-    return s
-
-
 def _scale_col_to_target(col, target, metric_func):
     """
     Scale a column's values so that in aggregate they match some metric,
@@ -249,13 +228,13 @@ def scale_to_targets(
         series = apply_filter_query(df, f)[target_col]
         scaled.append(scale_col_to_target(series, t, metric))
 
-    scaled = update_series(df[target_col], pd.concat(scaled))
+    scaled = pd.concat(scaled)
     scaled = scaled.clip(clip_low, clip_high)
 
     if int_result:
         scaled = scaled.round().astype('int')
 
     df = df.copy()
-    df[target_col] = scaled
+    df[target_col].loc[scaled.index] = scaled
 
     return df

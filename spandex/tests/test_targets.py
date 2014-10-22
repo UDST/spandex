@@ -26,18 +26,6 @@ def df(target_col):
          'filter_col': [x + 100 for x in l]})
 
 
-def test_update_series(col):
-    col_copy = col.copy()
-    s2 = pd.Series([9, 99], index=[2, 4])
-
-    result = tgts.update_series(col, s2)
-
-    pdt.assert_series_equal(col, col_copy)
-    pdt.assert_series_equal(
-        result,
-        pd.Series([1, 2, 9, 4, 99]))
-
-
 @pytest.mark.parametrize('metric', ['mean', 'median'])
 def test_scale_col_to_target_mean_median(col, metric):
     target = 600
