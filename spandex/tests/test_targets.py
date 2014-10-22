@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pandas.util.testing as pdt
 import pytest
@@ -126,3 +127,94 @@ def test_scale_to_targets_clip_int(df, target_col):
     pdt.assert_series_equal(
         result[target_col],
         pd.Series([400, 400, 545, 727, 909, 1000, 1000, 1000, 1000, 1000]))
+
+
+def test_scale_to_targets_from_table(df, target_col):
+    targets = pd.DataFrame(
+        {'column_name': [target_col, target_col],
+         'target_value': [100, 1000],
+         'target_metric': ['sum', 'sum'],
+         'filters': ['geo_id == "a",filter_col < 106', 'geo_id == "b"'],
+         'clip_low': [np.nan, np.nan],
+         'clip_high': [np.nan, np.nan],
+         'int_result': [np.nan, np.nan]})
+
+    result = tgts.scale_to_targets_from_table(df, targets)
+
+    pdt.assert_index_equal(result.columns, df.columns)
+    pdt.assert_series_equal(
+        result[target_col],
+        pd.Series(
+            [11.11111111, 66.66666667, 33.33333333, 133.33333333, 55.55555556,
+             200, 7, 266.66666667, 9, 333.33333333]),
+        check_dtype=False)
+
+
+def test_scale_to_targets_from_table_clip_int(df, target_col):
+    targets = pd.DataFrame(
+        {'column_name': [target_col],
+         'target_value': [1000],
+         'target_metric': ['mean'],
+         'filters': [np.nan],
+         'clip_low': [400],
+         'clip_high': [999.99],
+         'int_result': [True]})
+
+    result = tgts.scale_to_targets_from_table(df, targets)
+
+    pdt.assert_index_equal(result.columns, df.columns)
+    pdt.assert_series_equal(
+        result[target_col],
+        pd.Series([400, 400, 545, 727, 909, 1000, 1000, 1000, 1000, 1000]))
+
+
+def test_targets_row_to_params():
+    column = 'income'
+    target = 100000
+    metric = 'mean'
+    filters = 'geo_id == "a",filter_col < 106'
+    clip_low = 400
+    clip_high = 999.9
+    int_result = True
+
+    row = pd.Series(
+        [column, target, metric, filters, clip_low, clip_high, int_result],
+        index=[
+            'column_name', 'target_value', 'target_metric', 'filters',
+            'clip_low', 'clip_high', 'int_result'])
+
+    r = tgts._targets_row_to_params(row)
+
+    assert r.column == column
+    assert r.target == target
+    assert r.metric == metric
+    assert r.filters == ['geo_id == "a"', 'filter_col < 106']
+    assert r.clip_low == clip_low
+    assert r.clip_high == clip_high
+    assert r.int_result == int_result
+
+
+def test_targets_row_to_params_defaults():
+    column = 'income'
+    target = 100000
+    metric = 'mean'
+    filters = np.nan
+    clip_low = np.nan
+    clip_high = np.nan
+    int_result = np.nan
+
+    row = pd.Series(
+        [column, target, metric, filters, clip_low, clip_high, int_result],
+        index=[
+            'column_name', 'target_value', 'target_metric', 'filters',
+            'clip_low', 'clip_high', 'int_result'])
+
+    r = tgts._targets_row_to_params(row)
+
+    assert r.column == column
+    assert r.target == target
+    assert r.metric == metric
+    assert r.filters is None
+    assert r.clip_low is None
+    assert r.clip_high is None
+    assert r.int_result is False
