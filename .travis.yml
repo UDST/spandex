@@ -19,7 +19,7 @@ before_install:
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
   - conda info -a
-  - conda install -q coverage gdal flake8 numpy pandas pip pytest sqlalchemy six
+  - conda install -q coverage gdal flake8 numexpr numpy pandas pip pytest sqlalchemy six
   - pip install pytest-cov
 install:
   - pip install .
