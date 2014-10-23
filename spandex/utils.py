@@ -282,12 +282,16 @@ class DataLoader(object):
         # Unable to identify EPSG SRID. Use custom SRID.
         srs = self.database.tables.public.spatial_ref_sys
         with self.database.session() as sess:
-            srid = sess.query(srs.srid).filter(srs.srtext == wkt).first()[0]
-        if not srid:
+            srid = sess.query(srs.srid).filter(srs.srtext == wkt).first()
+        if srid:
+            return srid[0]
+        else:
             if gdal:
                 # Need to define custom projection since not in database.
                 logger.warn("Defining custom projection: %s" % filename)
                 proj4 = sr.ExportToProj4().strip()
+                if not proj4:
+                    raise RuntimeError("Unable to project: %s" % filename)
                 with self.database.session() as sess:
                     srid = sess.query(func.max(srs.srid)).one()[0] + 1
                     projection = srs(srid=srid,
