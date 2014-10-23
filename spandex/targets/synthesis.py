@@ -149,7 +149,7 @@ def _remove_rows_by_count(df, amount, count):
         return df.copy()
 
     sort_count = df[count].sort(ascending=False, inplace=False)
-    sort_count = sort_count[sort_count <= amount]
+    sort_count = sort_count[(sort_count <= amount) & (sort_count != 0)]
 
     to_remove = []
 
@@ -197,6 +197,7 @@ def _add_rows_by_count(df, amount, count, alloc_id, constraint, stuff=False):
         return df.copy()
 
     sort_count = df[count].sort(ascending=False, inplace=False)
+    sort_count = sort_count[sort_count != 0]
 
     to_add = []
 
