@@ -227,7 +227,7 @@ def _add_rows_by_count(df, amount, count, alloc_id, constraint, stuff=False):
     return pd.concat([df, rows_to_add])
 
 
-def synthesize_rows(
+def _add_or_remove_rows(
         df, target, alloc_id, constraint, count=None, stuff=False):
     """
     Add or remove rows from a table to meet some target while
