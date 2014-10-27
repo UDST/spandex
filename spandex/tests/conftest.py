@@ -32,7 +32,7 @@ def loader(request):
             loader.load_shp(shp_path, table_name)
 
     # Reproject all non-conforming SRIDs into project SRID.
-    conform_srids(schema=loader.database.tables.sample)
+    conform_srids(loader.srid, schema=loader.database.tables.sample)
 
     # Tear down sample schema when done.
     def teardown():

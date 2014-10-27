@@ -6,7 +6,6 @@ from sqlalchemy.orm import aliased
 
 from . import io
 from .database import database as db
-from .load import DataLoader
 
 
 # Set up logging system.
@@ -504,15 +503,17 @@ def geom_unfilled(table, output_table_name):
     io.db_to_db(q, output_table_name, schema)
 
 
-def reproject(table=None, column=None):
+def reproject(srid, table=None, column=None):
     """
-    Reproject table into the SRID specified in the project config.
+    Reproject table into the specified SRID.
 
     Either a table or a column must be specified. If a table is specified,
     the geom column will be reprojected.
 
     Parameters
     ----------
+    srid : int
+        Spatial Reference System Identifier (SRID).
     table : sqlalchemy.ext.declarative.DeclarativeMeta, optional
         Table ORM class containing geom column to reproject.
     column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
@@ -523,8 +524,6 @@ def reproject(table=None, column=None):
     None
 
     """
-    project_srid = DataLoader().srid
-
     # Get Table and Column objects.
     if column:
         geom = column.property.columns[0]
@@ -534,30 +533,32 @@ def reproject(table=None, column=None):
         geom = t.c.geom
 
     # Reproject using ST_Transform if column SRID differs from project SRID.
-    if project_srid != geom.type.srid:
+    if srid != geom.type.srid:
         with db.cursor() as cur:
             cur.execute("""
                 ALTER TABLE {schema}.{table}
-                ALTER COLUMN {g_name} TYPE geometry({g_type}, {psrid})
-                USING ST_Transform({g_name}, {psrid});
+                ALTER COLUMN {g_name} TYPE geometry({g_type}, {srid})
+                USING ST_Transform({g_name}, {srid});
             """.format(
                 schema=t.schema, table=t.name,
                 g_name=geom.name, g_type=geom.type.geometry_type,
-                psrid=project_srid))
+                srid=srid))
     else:
         logger.warn("Table {table} already in SRID {srid}".format(
-            table=t.name, srid=project_srid))
+            table=t.name, srid=srid))
 
     # Refresh ORM.
     db.refresh()
 
 
-def conform_srids(schema=None):
+def conform_srids(srid, schema=None):
     """
-    Reproject all non-conforming geometry columns into project SRID.
+    Reproject all non-conforming geometry columns into the specified SRID.
 
     Parameters
     ----------
+    srid : int
+        Spatial Reference System Identifier (SRID).
     schema : schema class
         If schema is specified, only SRIDs within the specified schema
         are conformed.
@@ -567,8 +568,6 @@ def conform_srids(schema=None):
     None
 
     """
-    project_srid = DataLoader().srid
-
     # Iterate over all columns. Reproject geometry columns with SRIDs
     # that differ from project SRID.
     for schema_name, schema_obj in db.tables.__dict__.items():
@@ -580,7 +579,7 @@ def conform_srids(schema=None):
                             if isinstance(c.type, Geometry):
                                 # Column is geometry column. Reproject if SRID
                                 # differs from project SRID.
-                                srid = c.type.srid
-                                if srid != project_srid:
+                                current_srid = c.type.srid
+                                if srid != current_srid:
                                     column = getattr(table, c.name)
-                                    reproject(table, column)
+                                    reproject(srid, table, column)
