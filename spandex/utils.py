@@ -334,14 +334,9 @@ class DataLoader(object):
         with open(filepath):
             pass
 
-        # If SRID not provided, try to identify from projection information
-        # before falling back to default SRID.
+        # If SRID not provided, identify from projection information.
         if not srid:
             srid = self.get_srid(filename)
-            if not srid:
-                logger.warn("Falling back to default SRID %s: %s"
-                            % (self.srid, filename))
-                srid = self.srid
 
         # If encoding not provided, try to identify from cpg or cst file
         # before falling back to default encoding.
