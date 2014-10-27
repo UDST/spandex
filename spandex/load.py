@@ -12,6 +12,9 @@ from .database import database as db
 from .utils import load_config, logf
 
 
+"""Contains DataLoader class."""
+
+
 # Set up logging system.
 logging.basicConfig()
 logger = logging.getLogger(__name__)

@@ -6,6 +6,9 @@ from rasterstats.utils import (bbox_to_pixel_offsets, shapely_to_ogr_type, get_f
 from shapely.geometry import shape, box, MultiPolygon
 
 
+"""Contains untested raster functions."""
+
+
 def from_geotiff(path_to_tif):
     with rasterio.drivers(CPL_DEBUG=True):
         with rasterio.open(path_to_tif) as src:

@@ -4,6 +4,9 @@ import os
 from six.moves import configparser
 
 
+"""Contains reusable utility functions."""
+
+
 # Set up logging system.
 logging.basicConfig()
 logger = logging.getLogger(__name__)

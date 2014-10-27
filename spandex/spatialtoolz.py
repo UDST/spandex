@@ -8,6 +8,9 @@ from . import io
 from .database import database as db
 
 
+"""Contains spatial functions."""
+
+
 # Set up logging system.
 logging.basicConfig()
 logger = logging.getLogger(__name__)

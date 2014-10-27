@@ -11,6 +11,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import UpdateBase
 
 
+"""Contains database abstraction classes."""
+
+
 # Set up logging system.
 logging.basicConfig()
 logger = logging.getLogger(__name__)
