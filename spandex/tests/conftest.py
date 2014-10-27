@@ -2,8 +2,8 @@ import os
 
 import pytest
 
+from spandex.load import DataLoader
 from spandex.spatialtoolz import conform_srids
-from spandex.utils import DataLoader
 
 
 @pytest.fixture(scope='function')
