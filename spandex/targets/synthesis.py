@@ -3,6 +3,8 @@ import logging
 import numpy as np
 import pandas as pd
 
+from .targets import apply_filter_query
+
 logger = logging.getLogger(__name__)
 
 
@@ -287,3 +289,92 @@ def _add_or_remove_rows(
             # target met, nothing to do!
             logger.debug('target total is met')
             return df.copy()
+
+
+def synthesize_one(
+        df, target, alloc_id, geo_df, geo_col, constraint_expr=None,
+        filters=None, count=None, stuff=False):
+    """
+    Add or remove rows to/from a table to meet some target.
+    The target can be either a number of rows or the sum of a numeric column.
+
+    Add or remove rows from a table to meet some target while
+    respecting constraints.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Table being modified.
+    target : int
+        Target number of things.
+    alloc_id : str
+        Name of column in `df` that corresponds to where new rows are being
+        allocated. Should correspond to the index of `constraint`.
+    geo_df : pandas.DataFrame
+        Table of containers to which new `df` rows will be allocated.
+        Containers are expected to be ID'd by their index.
+    geo_col : str
+        Name of column in `geo_df` that has constraint values.
+    constraint_expr : str, optional
+        An optional constraint expression for translating the values
+        in `geo_col` into units. E.g. 'parcel_sqft / 500'.
+    filters : str or sequence, optional
+        Expressions for filtering `df` to the rows that will be subject
+        to removal or copying.
+    count : str, optional
+        The name of a column in `df` to sum in order to compare to `target`.
+        If None the number of rows will be counted.
+    stuff : bool, optional
+        Whether it's okay for allocation to go over constraints.
+        If False rows are still added to meet targets, but some will
+        not be placed.
+
+    Returns
+    -------
+    new_df : pandas.DataFrame
+
+    """
+    # calculate constraints by comparing geo constraint values and the
+    # current occupancy levels.
+    # start with current occupancy
+    occupancy = df[alloc_id].value_counts()
+
+    # get the total container limits
+    if constraint_expr:
+        container_size = geo_df.eval(constraint_expr)
+    else:
+        container_size = geo_df[geo_col]
+
+    if not occupancy.index.isin(container_size.index).all():
+        raise RuntimeError('Rows are assigned to non-existant containers')
+
+    constraints = container_size.sub(occupancy, fill_value=0)
+
+    # separate rows for which this target applies and those for which
+    # it doesn't
+    filters = filters.split(',') if isinstance(filters, str) else filters
+    synth_df = apply_filter_query(df, filters)
+
+    if len(synth_df) == 0 and target != 0:
+        raise RuntimeError('No rows to synthesize or remove')
+
+    new_synth_df = _add_or_remove_rows(
+        synth_df, target, alloc_id, constraints, count=count, stuff=stuff)
+
+    if len(new_synth_df) > len(synth_df):
+        # rows were added and we'll need to do some index resolution
+        new_indexes = new_synth_df.index.difference(synth_df.index)
+        new_rows = new_synth_df.loc[new_indexes]
+
+        current_idx_max = df.index.max()
+        new_rows.index = range(
+            current_idx_max + 1, current_idx_max + len(new_rows) + 1)
+
+        return pd.concat([df, new_rows])
+
+    elif len(new_synth_df) < len(synth_df):
+        removed = synth_df.index.difference(new_synth_df.index)
+        return df.loc[df.index.difference(removed)]
+
+    else:
+        return df.copy()
