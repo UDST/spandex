@@ -292,7 +292,7 @@ def _add_or_remove_rows(
 
 
 def synthesize_one(
-        df, target, alloc_id, geo_df, geo_col, constraint_expr=None,
+        df, target, alloc_id, geo_df, geo_col=None, constraint_expr=None,
         filters=None, count=None, stuff=False):
     """
     Add or remove rows to/from a table to meet some target.
@@ -313,11 +313,13 @@ def synthesize_one(
     geo_df : pandas.DataFrame
         Table of containers to which new `df` rows will be allocated.
         Containers are expected to be ID'd by their index.
-    geo_col : str
+    geo_col : str, optional
         Name of column in `geo_df` that has constraint values.
+        This is optional if `constraint_expr` is provided.
     constraint_expr : str, optional
         An optional constraint expression for translating the values
         in `geo_col` into units. E.g. 'parcel_sqft / 500'.
+        This overrides `geo_col`.
     filters : str or sequence, optional
         Expressions for filtering `df` to the rows that will be subject
         to removal or copying.
