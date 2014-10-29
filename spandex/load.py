@@ -73,6 +73,7 @@ class DataLoader(object):
         database:        PostgreSQL database connection manager class.
         directory:       Path to the directory containing the shapefiles.
         srid:            Default Spatial Reference System Identifier (SRID).
+        tables:          PostgreSQL table objects, namespaced by schema.
 
     Attributes can be passed as additional constructor arguments and override
     configuration.
@@ -107,6 +108,7 @@ class DataLoader(object):
 
         # Assign arguments to attributes.
         self.database = database
+        self.tables = self.database.tables
         if os.path.exists(directory):
             self.directory = directory
         else:

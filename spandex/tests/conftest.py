@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from spandex.load import DataLoader
+from spandex import DataLoader
 from spandex.spatialtoolz import conform_srids
 
 
