@@ -460,6 +460,5 @@ def synthesize_from_table(df, geo_df, targets):
             filters=row['filters'],
             count=row['count'],
             stuff=row['stuff'])
-        print new_df
 
     return new_df
