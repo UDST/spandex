@@ -397,7 +397,7 @@ def test_add_or_remove_rows_count_remove(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_noop(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 5
 
     if not scaled_test:
@@ -405,7 +405,7 @@ def test_synthesize_one_noop(
             df, target, alloc_id, constraint_df, constraint_units)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr)
 
     assert len(result) == target
@@ -415,7 +415,7 @@ def test_synthesize_one_noop(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_add(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 8
 
     if not scaled_test:
@@ -423,7 +423,7 @@ def test_synthesize_one_add(
             df, target, alloc_id, constraint_df, constraint_units)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr)
 
     assert len(result) == target
@@ -437,7 +437,7 @@ def test_synthesize_one_add(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_add_filters(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 3
     filters = '{} < 2'.format(count)
 
@@ -447,7 +447,7 @@ def test_synthesize_one_add_filters(
             filters=filters)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             filters=filters, constraint_expr=constraint_expr)
 
     assert len(result.query(filters)) == target
@@ -461,7 +461,7 @@ def test_synthesize_one_add_filters(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_add_stuff(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 10
     stuff = True
 
@@ -470,7 +470,7 @@ def test_synthesize_one_add_stuff(
             df, target, alloc_id, constraint_df, constraint_units, stuff=stuff)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr, stuff=stuff)
 
     assert len(result) == target
@@ -484,7 +484,7 @@ def test_synthesize_one_add_stuff(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_add_no_stuff(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 10
     stuff = False
 
@@ -493,7 +493,7 @@ def test_synthesize_one_add_no_stuff(
             df, target, alloc_id, constraint_df, constraint_units, stuff=stuff)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr, stuff=stuff)
 
     assert len(result) == target
@@ -507,7 +507,7 @@ def test_synthesize_one_add_no_stuff(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_remove(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 3
 
     if not scaled_test:
@@ -515,7 +515,7 @@ def test_synthesize_one_remove(
             df, target, alloc_id, constraint_df, constraint_units)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr)
 
     assert len(result) == target
@@ -530,7 +530,7 @@ def test_synthesize_one_remove(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_remove_filters(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 1
     filters = '{} > 3'.format(count)
 
@@ -540,7 +540,7 @@ def test_synthesize_one_remove_filters(
             filters=filters)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             filters=filters, constraint_expr=constraint_expr)
 
     assert len(result.query(filters)) == target
@@ -555,7 +555,7 @@ def test_synthesize_one_remove_filters(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_count_noop(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = df[count].sum()
 
     if not scaled_test:
@@ -563,7 +563,7 @@ def test_synthesize_one_count_noop(
             df, target, alloc_id, constraint_df, constraint_units, count=count)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr, count=count)
 
     assert result[count].sum() == target
@@ -573,7 +573,7 @@ def test_synthesize_one_count_noop(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_count_add(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 18
 
     if not scaled_test:
@@ -581,7 +581,7 @@ def test_synthesize_one_count_add(
             df, target, alloc_id, constraint_df, constraint_units, count=count)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr, count=count)
 
     assert result[count].sum() == target
@@ -595,7 +595,7 @@ def test_synthesize_one_count_add(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_count_add_filters(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 18
     filters = '{} > 3'.format(count)
 
@@ -605,7 +605,7 @@ def test_synthesize_one_count_add_filters(
             filters=filters, count=count)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             filters=filters, constraint_expr=constraint_expr, count=count)
 
     assert result.query(filters)[count].sum() == target
@@ -619,7 +619,7 @@ def test_synthesize_one_count_add_filters(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_count_add_stuff(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 30
     stuff = True
 
@@ -629,7 +629,7 @@ def test_synthesize_one_count_add_stuff(
             count=count, stuff=stuff)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr, count=count, stuff=stuff)
 
     assert result[count].sum() == target
@@ -643,7 +643,7 @@ def test_synthesize_one_count_add_stuff(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_count_add_no_stuff(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 30
     stuff = False
 
@@ -653,7 +653,7 @@ def test_synthesize_one_count_add_no_stuff(
             count=count, stuff=stuff)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr, count=count, stuff=stuff)
 
     assert result[count].sum() == target
@@ -667,7 +667,7 @@ def test_synthesize_one_count_add_no_stuff(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_count_remove(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 10
 
     if not scaled_test:
@@ -676,7 +676,7 @@ def test_synthesize_one_count_remove(
             count=count)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             constraint_expr=constraint_expr, count=count)
 
     assert result[count].sum() == target
@@ -690,7 +690,7 @@ def test_synthesize_one_count_remove(
 @pytest.mark.parametrize('scaled_test', [False, True])
 def test_synthesize_one_count_remove_filters(
         seed, df, alloc_id, count, constraint_df, constraint_units,
-        constraint_scaled, constraint_expr, scaled_test):
+        constraint_expr, scaled_test):
     target = 2
     filters = '{} < 3'.format(count)
 
@@ -700,7 +700,7 @@ def test_synthesize_one_count_remove_filters(
             filters=filters, count=count)
     else:
         result = syn.synthesize_one(
-            df, target, alloc_id, constraint_df, constraint_scaled,
+            df, target, alloc_id, constraint_df,
             filters=filters, constraint_expr=constraint_expr, count=count)
 
     assert result.query(filters)[count].sum() == target
@@ -710,3 +710,47 @@ def test_synthesize_one_count_remove_filters(
             {alloc_id: ['b', 'c', 'b', 'c'],
              count: [2, 3, 4, 5]},
             index=[1, 2, 3, 4]))
+
+
+def test_synthesize_one_27bug(
+        alloc_id, count, constraint_df, constraint_units):
+    # this triggers a bug where things aren't adding up when counting
+    # values in the count column and filtering on the count column
+    df = pd.DataFrame(
+        {alloc_id: ['a', 'b', 'c', 'b', 'c', 'b', 'c'],
+         count: [1, 2, 3, 4, 5, 5, 1]})
+    target = 27
+    filters = '{} > 3'.format(count)
+
+    result = syn.synthesize_one(
+        df, target, alloc_id, constraint_df, constraint_units,
+        filters=filters, count=count, stuff=False)
+
+    assert result.query(filters)[count].sum() == target
+
+
+def test_synthesize_from_table(
+        seed, df, alloc_id, count, constraint_df, constraint_units,
+        constraint_scaled, constraint_expr):
+    targets = pd.DataFrame(
+        {'target_value': [7, 27, 1, 1],
+         'geo_id_col': [alloc_id] * 4,
+         'filters': [
+             np.nan,
+             '{} > 3'.format(count),
+             '{} == "a",{} == 1'.format(alloc_id, count),
+             '{} == 1'.format(count)],
+         'count': [np.nan, count, np.nan, count],
+         'capacity_col': [
+             constraint_units, np.nan, constraint_units, constraint_units],
+         'capacity_expr': [np.nan, constraint_expr, np.nan, constraint_expr],
+         'stuff': [np.nan, False, True, True]})
+
+    result = syn.synthesize_from_table(df, constraint_df, targets)
+
+    pdt.assert_frame_equal(
+        result,
+        pd.DataFrame(
+            {alloc_id: ['a', 'b', 'c', 'b', 'c', 'b', 'c', 'c', None],
+             count: [1, 2, 3, 4, 5, 5, 5, 4, 4]},
+            index=[0, 1, 2, 3, 4, 5, 7, 8, 9]))

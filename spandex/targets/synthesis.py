@@ -200,6 +200,7 @@ def _add_rows_by_count(df, amount, count, alloc_id, constraint, stuff=False):
 
     sort_count = df[count].sort(ascending=False, inplace=False)
     sort_count = sort_count[sort_count != 0]
+    orig_sort_count = sort_count.copy()
 
     to_add = []
 
@@ -207,7 +208,16 @@ def _add_rows_by_count(df, amount, count, alloc_id, constraint, stuff=False):
         sort_count = sort_count[sort_count <= amount]
 
         if len(sort_count) == 0:
-            break
+            # see if we can pop the most recent thing off to_add
+            # and try again with a smaller number.
+            k = to_add.pop()
+            v = orig_sort_count[k]
+            amount += v
+            sort_count = orig_sort_count[
+                (orig_sort_count < v) & (orig_sort_count <= amount)]
+
+            if len(sort_count) == 0:
+                break
 
         for k, v in sort_count.iteritems():
             if v <= amount:
@@ -380,3 +390,76 @@ def synthesize_one(
 
     else:
         return df.copy()
+
+
+def synthesize_from_table(df, geo_df, targets):
+    """
+    Add and remove rows from a table based on targets in another table.
+
+    The table is expected to have this format (values are examples)::
+
+        target_value geo_id_col  filters        count     \
+        500          'parcel_id'
+        10000        'zone_id'   'zone_id == 1' 'persons'
+
+        capacity_col        capacity_expr                stuff
+        'residential_units'
+                            'non_residential_sqft / 250' True
+
+    Values left blank are optional. The ``geo_id_col``, ``filters``,
+    and ``count`` options all apply to the table of agents being modified.
+    ``geo_id_col`` contains the identifiers of the geographic containers
+    to which new rows allocated. This needs to correspond to the
+    index of `geo_df`. ``filters`` specify a subset of `df` to which
+    the row's target and other parameters apply. ``count`` speciies a
+    column in ``df`` that is counted for comparison to the target.
+    If no ``count`` is provided, rows are counted.
+
+    ``capacity_col`` and ``capacity_expr`` refer to columns in `geo_df`.
+    They specify the capacity of the geographic containers in `geo_df`.
+    The values in ``capacity_col`` will be used unmodified as that
+    container's capacity. ``capacity_expr`` will be evaluated using
+    Pandas' ``eval`` function to make a Series that will be used
+    as the capacity. ``capacity_col`` and ``capacity_expr``
+    are mutually exclusive and if both are given ``capacity_expr``
+    will be used.
+
+    If more rows are synthesized that can be allocated all the rows will
+    always be included in the result. The ``stuff`` parameter indicates
+    whether geographic containers should be stuff beyond their capacity.
+    If not, rows are left unassigned to any container.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Table of agents that will have rows added or removed.
+    geo_df : pandas.DataFrame
+        Table of geographic containers to which new rows in `df` will
+        be allocated.
+    target : pandas.DataFrame
+        Table of synthesis parameters.
+
+    Returns
+    -------
+    new_df : pandas.DataFrame
+
+    """
+    # replace NaNs with None
+    targets = targets.where(targets.notnull(), None)
+
+    new_df = df
+
+    for _, row in targets.iterrows():
+        new_df = synthesize_one(
+            df=new_df,
+            target=row['target_value'],
+            alloc_id=row['geo_id_col'],
+            geo_df=geo_df,
+            geo_col=row['capacity_col'],
+            constraint_expr=row['capacity_expr'],
+            filters=row['filters'],
+            count=row['count'],
+            stuff=row['stuff'])
+        print new_df
+
+    return new_df
