@@ -375,6 +375,158 @@ class TableLoader(object):
                 self.load_shp(table=table, **value)
 
 
+class TableFrame(object):
+    """
+    DataFrame-like object for read-only access to a database table.
+
+    TableFrame wraps a SQLAlchemy ORM table for queries using syntax
+    similar to key and attribute access on a pandas DataFrame.
+    These DataFrame-like operations are supported:
+
+        my_tableframe = TableFrame(table, index_name='gid')
+        my_series1 = my_tableframe['col1']
+        my_dataframe = my_tableframe[['col1', 'col2']]
+        my_series2 = my_tableframe.col2
+        num_rows = len(my_tableframe)
+
+    Caching is enabled by default. As columns are queried, they will
+    be cached as individual Series objects for future lookups.
+    The cache can be emptied by calling the `clear` method.
+    Caching can be enabled and disabled with the `cache` parameter or
+    by reassigning to the `cache` attribute.
+
+    Unlike a DataFrame, TableFrame is read-only.
+
+    TableFrame instances can be registered as tables in the
+    UrbanSim simulation framework using the `sim.add_table` function.
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class to wrap.
+    index_name : str
+        Name of column to use as DataFrame and Series index.
+    cache : bool
+        Whether to cache columns as they are queried.
+
+    Attributes
+    ----------
+    cache : bool
+        Whether caching is enabled. Can be reassigned to enable/disable.
+    columns : list of str
+        List of column names in database table.
+    index : pandas.Index
+        DataFrame and Series index
+
+    """
+    def __init__(self, table, index_name=None, cache=False):
+        super(TableFrame, self).__init__()
+        super(TableFrame, self).__setattr__('_table', table)
+        super(TableFrame, self).__setattr__('_index_name', index_name)
+        super(TableFrame, self).__setattr__('cache', cache)
+        super(TableFrame, self).__setattr__('_cached', {})
+        super(TableFrame, self).__setattr__('_index', pd.Index([]))
+
+    @property
+    def columns(self):
+        return self._table.__table__.columns.keys()
+
+    @property
+    def index(self):
+        if not self.cache or len(self._index) == 0:
+            if self._index_name:
+                index_column = getattr(self._table, self._index_name)
+                index = db_to_df(index_column,
+                                 index_name=self._index_name).index
+            else:
+                self._index = pd.Index(range(len(self)))
+            super(TableFrame, self).__setattr__('_index', index)
+        return self._index
+
+    def clear(self):
+        """Clear column cache."""
+        self._cached.clear()
+
+    def copy(self):
+        """Object is read-only, so the same object is returned."""
+        return self
+
+    def __dir__(self):
+        """Support IPython tab-completion of column names."""
+        return self.__dict__.keys() + self.columns
+
+    def __getitem__(self, key):
+        """
+        Return column(s) as a pandas Series or DataFrame.
+
+        Like pandas, if the key is an iterable, a DataFrame will be
+        returned containing the column(s) named in the iterable.
+        Otherwise a Series will be returned.
+
+        """
+        # Collect column name(s).
+        if hasattr(key, '__iter__') and not isinstance(key, string_types):
+            # Argument is list-like. Later return DataFrame.
+            return_dataframe = True
+            column_names = key
+        else:
+            # Argument is scalar. Later return Series.
+            return_dataframe = False
+            column_names = [key]
+
+        if self.cache:
+            # Collect cached columns and exclude from query.
+            cached = []
+            query_columns = []
+            for name in column_names:
+                if name in self._cached:
+                    cached.append(self._cached[name])
+                else:
+                    query_columns.append(getattr(self._table, name))
+        else:
+            # Caching disabled, so query all columns.
+            query_columns = [getattr(self._table, n) for n in column_names]
+
+        if query_columns:
+            # Query uncached columns including column used as index.
+            query_columns.append(self._index_name)
+            query_df = db_to_df(query_columns, index_name=self._index_name)
+            if self.cache:
+                # Join queried columns to cached columns.
+                df = pd.concat([query_df] + cached, axis=1, copy=False)
+                for (column_name, series) in query_df.iteritems():
+                    self._cached[column_name] = series
+            else:
+                # Caching disabled, so no join.
+                df = query_df
+        else:
+            # All columns were cached, so join them.
+            df = pd.concat(cached, axis=1, copy=False)
+
+        if return_dataframe:
+            # Return DataFrame with specified column order.
+            return df.reindex_axis(column_names, axis=1, copy=False)
+        else:
+            # Return Series.
+            return df[key]
+
+    def __getattr__(self, key):
+        """Return column as a pandas Series."""
+        return self.__getitem__(key)
+
+    def __len__(self):
+        """Calculate length from number of rows in database table."""
+        with db.session() as sess:
+            return sess.query(self._table).count()
+
+    def __setattr__(self, name, value):
+        """No attribute assignment, except to enable/disable cache."""
+        if name == 'cache':
+            super(TableFrame, self).__setattr__('cache', value)
+        else:
+            raise TypeError("TableFrame is read-only.")
+
+
 def update_df(df, column, table):
     """
     Add or update column in DataFrame from database table.
