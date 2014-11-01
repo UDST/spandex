@@ -470,7 +470,7 @@ def db_to_query(orm):
     if isinstance(orm, Query):
         # Assume input is Query object.
         return orm
-    elif hasattr(orm, '__iter__'):
+    elif hasattr(orm, '__iter__') and not isinstance(orm, string_types):
         # Assume input is list of ORM objects.
         with db.session() as sess:
             return sess.query(*orm)
