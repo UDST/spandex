@@ -2,17 +2,17 @@ import os
 
 import pytest
 
-from spandex import DataLoader
+from spandex import TableLoader
 from spandex.spatialtoolz import conform_srids
 
 
 @pytest.fixture(scope='function')
 def loader(request):
     """Recreate sample schema from shapefiles and tear down when done."""
-    # Configure DataLoader to use data directory containing sample shapefiles.
+    # Configure TableLoader to use directory containing sample shapefiles.
     root_path = os.path.dirname(__file__)
     data_path = os.path.join(root_path, '../../test_data')
-    loader = DataLoader(directory=data_path)
+    loader = TableLoader(directory=data_path)
 
     # Recreate PostgreSQL sample schema.
     with loader.database.cursor() as cur:

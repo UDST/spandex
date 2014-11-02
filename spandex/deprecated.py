@@ -2,14 +2,14 @@ import os
 
 import pandas as pd
 
+from . import TableLoader
 from .io import exec_sql
-from .utils import DataLoader
 
 
 """
 Functions in this module are deprecated and no longer tested.
 
-Loading data is now handled by DataLoader methods.
+Loading data is now handled by TableLoader methods.
 
 """
 
@@ -60,7 +60,7 @@ def load_multiple_shp(shapefiles, config_filename=None):
             return os.path.join(input_dir, shp_table_name, shp_path)
         return func
 
-    loader = DataLoader(config_filename)
+    loader = TableLoader(config_filename)
 
     for shape_category in shapefiles:
         path_func = subpath(shape_category)
@@ -166,7 +166,7 @@ def load_multiple_delimited_files(files, config_filename=None):
     def subpath(base_dir):
         def func(shp_table_name, shp_path):
             input_dir = base_dir
-            return os.path.join(DataLoader().directory, input_dir, shp_table_name, shp_path)
+            return os.path.join(TableLoader().directory, input_dir, shp_table_name, shp_path)
         return func
     for category in files:
         path_func = subpath(category)
