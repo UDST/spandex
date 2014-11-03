@@ -1,7 +1,9 @@
 import numpy as np
 from sqlalchemy import func
 
-from spandex import db_to_df, spatialtoolz
+from spandex import spatialtoolz
+from spandex.io import db_to_df
+
 
 # Sanity checks for spatialtoolz. These tests don't ensure correct results,
 # but rather check that results "make sense" and are within bounds.
