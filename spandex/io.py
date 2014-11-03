@@ -6,7 +6,7 @@ import subprocess
 import pandas as pd
 import psycopg2
 from six import string_types
-from six.moves import urllib
+from six.moves import cStringIO, urllib
 from sqlalchemy import func
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Query
@@ -710,6 +710,31 @@ def db_to_df(query, index_name=None):
     df = pd.DataFrame.from_records(data, index=index_name,
                                    columns=column_names, coerce_float=True)
     return df
+
+
+def df_to_db(df, table_name, schema=None, pk='id'):
+    if schema:
+        schema_name = schema.__name__
+        qualified_name = "{}.{}".format(schema_name, table_name)
+    else:
+        schema_name = None
+        qualified_name = table_name
+    empty_df = df.iloc[[0]]
+    with db.cursor() as cur:
+        empty_df.to_sql(table_name, db._engine, schema=schema_name,
+                        index=True, if_exists='replace')
+        cur.execute("DELETE FROM {}".format(qualified_name))
+        buf = cStringIO()
+        df.to_csv(buf, sep='\t', na_rep=r'\N', header=False, index=True)
+        buf.seek(0)
+        cur.copy_from(buf, qualified_name,
+                      columns=tuple([df.index.name] +
+                                    df.columns.values.tolist()))
+        if pk:
+            cur.execute("""
+                ALTER TABLE {} ADD COLUMN {} serial PRIMARY KEY;
+            """.format(qualified_name, pk))
+    db.refresh()
 
 
 def vacuum(table):
