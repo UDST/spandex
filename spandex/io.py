@@ -632,12 +632,12 @@ def db_to_query(orm):
             return sess.query(orm)
 
 
-def db_to_db(query, name, schema=None, view=False):
+def db_to_db(query, table_name, schema=None, view=False, pk='id'):
     """
     Create a table or view from Query, table, or ORM objects, like columns.
 
     Do not use to duplicate a table. The new table will not contain
-    indexes or constraints, including primary keys.
+    the same indexes or constraints.
 
     Parameters
     ----------
@@ -645,7 +645,7 @@ def db_to_db(query, name, schema=None, view=False):
             or iterable
         Query ORM object, table ORM class, or list of ORM objects to query,
         like columns.
-    name : str
+    table_name : str
         Name of table or view to create.
     schema : schema class, optional
         Schema of table to create. Defaults to public.
@@ -661,13 +661,17 @@ def db_to_db(query, name, schema=None, view=False):
         schema_name = schema.__name__
     else:
         schema_name = 'public'
-    qualified_name = schema_name + "." + name
+    qualified_name = schema_name + "." + table_name
 
     q = db_to_query(query)
 
     # Create new table from results of the query.
     with db.session() as sess:
         sess.execute(CreateTableAs(qualified_name, q, view))
+        if pk:
+            sess.execute("""
+                ALTER TABLE {} ADD COLUMN {} serial PRIMARY KEY;
+            """.format(qualified_name, pk))
     db.refresh()
 
 
