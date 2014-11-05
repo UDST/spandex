@@ -1,7 +1,7 @@
 # spandex
 [![Build Status](https://magnum.travis-ci.com/daradib/spandex.svg?token=git8En8mdsEyvKfCCzyy)](https://magnum.travis-ci.com/daradib/spandex)
 
-## Spatial Analysis and Data Exploration
+## Spatial Analysis and Data Extraction
 
 Data processing and imputation steps for UrbanSim.  Transform messy urban data into spatial insight!
 
