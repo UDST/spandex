@@ -1,0 +1,6 @@
+[run]
+omit =
+    **/spandex/deprecated/*
+
+[report]
+show_missing = True
