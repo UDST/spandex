@@ -51,7 +51,7 @@ class TableLoader(object):
 
         # Run ORM command.
         session = loader.database.session
-        alameda = loader.database.tables.staging.alameda
+        alameda = loader.tables.staging.alameda
         for desc in session.query(alameda.luc_desc).distinct():
             print(desc)
 
@@ -244,7 +244,7 @@ class TableLoader(object):
             return srid
 
         # Unable to identify EPSG SRID. Use custom SRID.
-        srs = self.database.tables.public.spatial_ref_sys
+        srs = self.tables.public.spatial_ref_sys
         with self.database.session() as sess:
             srid = sess.query(srs.srid).filter(srs.srtext == wkt).first()
         if srid:
