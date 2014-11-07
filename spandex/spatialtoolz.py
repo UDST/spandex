@@ -1,14 +1,14 @@
 import logging
-import os
 
 from geoalchemy2 import Geometry
-import pandas as pd
 from sqlalchemy import func
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.orm import aliased, Query
+from sqlalchemy.orm import aliased
 
-from .database import database as db, CreateTableAs
-from .utils import DataLoader
+from . import io
+from .database import database as db
+
+
+"""Contains spatial functions."""
 
 
 # Set up logging system.
@@ -63,7 +63,7 @@ def tag(target_table, target_column_name, source_table, source_column_name,
     else:
         # Use data type of source column for new column.
         dtype = source_column.property.columns[0].type.compile()
-        target_column = add_column(target_table, target_column_name, dtype)
+        target_column = io.add_column(target_table, target_column_name, dtype)
 
     # Tag target table with column from source table.
     with db.session() as sess:
@@ -75,7 +75,7 @@ def tag(target_table, target_column_name, source_table, source_column_name,
         )
 
     if df:
-        return update_df(df, target_column, target_table)
+        return io.update_df(df, target_column, target_table)
 
 
 def proportion_overlap(target_table, over_table, column_name, df=None):
@@ -113,7 +113,7 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
     if column_name in target_table.__table__.columns:
         column = getattr(target_table, column_name)
     else:
-        column = add_column(target_table, column_name, 'float')
+        column = io.add_column(target_table, column_name, 'float')
 
     # Pre-calculate column area.
     calc_area(target_table)
@@ -135,7 +135,7 @@ def proportion_overlap(target_table, over_table, column_name, df=None):
         )
 
     if df:
-        return update_df(df, column, target_table)
+        return io.update_df(df, column, target_table)
 
 
 def trim(target_col, trim_col):
@@ -247,7 +247,7 @@ def calc_area(table):
         column = table.calc_area
     else:
         column_added = True
-        column = add_column(table, 'calc_area', 'float')
+        column = io.add_column(table, 'calc_area', 'float')
 
     # Calculate geometric area.
     try:
@@ -259,7 +259,7 @@ def calc_area(table):
     except:
         # Remove column if it was freshly added and exception raised.
         if column_added:
-            remove_column(column)
+            io.remove_column(column)
         raise
 
 
@@ -294,7 +294,7 @@ def calc_dist(table, geom):
         column = table.calc_dist
     else:
         column_added = True
-        column = add_column(table, 'calc_dist', 'float')
+        column = io.add_column(table, 'calc_dist', 'float')
 
     # Calculate geometric distance.
     try:
@@ -302,7 +302,7 @@ def calc_dist(table, geom):
             # Aggregate geometry column into single MULTI object.
             multi = sess.query(
                 func.ST_Collect(
-                    db_to_query(geom).label('geom')
+                    io.db_to_query(geom).label('geom')
                 )
             )
             # Calculate distances from table geometries to MULTI object.
@@ -314,7 +314,7 @@ def calc_dist(table, geom):
     except:
         # Remove column if it was freshly added and exception raised.
         if column_added:
-            remove_column(column)
+            io.remove_column(column)
         raise
 
 
@@ -354,9 +354,9 @@ def geom_invalid(table, index=None):
 
     # Convert query to DataFrame.
     if index:
-        df = db_to_df(q, index_name=index.name)
+        df = io.db_to_df(q, index_name=index.name)
     else:
-        df = db_to_df(q)
+        df = io.db_to_df(q)
     return df
 
 
@@ -391,7 +391,7 @@ def geom_duplicate(table):
         )
 
     # Convert query to DataFrame.
-    df = db_to_df(rows)
+    df = io.db_to_df(rows)
     return df
 
 
@@ -458,7 +458,7 @@ def geom_overlapping(table, key_name, output_table_name):
     # Create new table from query. This table does not contain constraints,
     # such as primary keys.
     schema = getattr(db.tables, table.__table__.schema)
-    db_to_db(q, output_table_name, schema)
+    io.db_to_db(q, output_table_name, schema)
 
 
 def geom_unfilled(table, output_table_name):
@@ -503,199 +503,20 @@ def geom_unfilled(table, output_table_name):
     # Create new table from query. This table does not contain constraints,
     # such as primary keys.
     schema = getattr(db.tables, table.__table__.schema)
-    db_to_db(q, output_table_name, schema)
+    io.db_to_db(q, output_table_name, schema)
 
 
-def update_df(df, column, table):
+def reproject(srid, table=None, column=None):
     """
-    Add or update column in DataFrame from database table.
-
-    Database table must contain column with the same name as
-    DataFrame's index (df.index.name).
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        DataFrame to return an updated copy of.
-    column : sqlalchemy.orm.attributes.InstrumentedAttribute
-        Column ORM object to update DataFrame with.
-    table : sqlalchemy.ext.declarative.DeclarativeMeta
-        Table ORM class containing columns to update with and index on.
-
-    Returns
-    -------
-    df : pandas.DataFrame
-
-    """
-    # Get table column to use as index based on DataFrame index name.
-    index_column = getattr(table, df.index.name)
-
-    # Query index column and column to update DataFrame with.
-    with db.session() as sess:
-        q = sess.query(index_column, column)
-
-    # Update DataFrame column.
-    new_df = db_to_df(q, index_name=df.index.name)
-    df[column.name] = new_df[column.name]
-    return df
-
-
-def add_column(table, column_name, type_name, default=None):
-    """
-    Add column to table.
-
-    Parameters
-    ----------
-    table : sqlalchemy.ext.declarative.DeclarativeMeta
-        Table ORM class to add column to.
-    column_name : str
-        Name of column to add to table.
-    type_name : str
-        Name of column type.
-    default : str, optional
-        Default value for column. Must include quotes if string.
-
-    Returns
-    -------
-    column : sqlalchemy.orm.attributes.InstrumentedAttribute
-        Column ORM object that was added.
-
-    """
-    if default:
-        default_str = "DEFAULT {}".format(default)
-    else:
-        default_str = ""
-
-    t = table.__table__
-    with db.cursor() as cur:
-        cur.execute("""
-            ALTER TABLE {schema}.{table}
-            ADD COLUMN {column} {type} {default_str};
-        """.format(
-            schema=t.schema, table=t.name,
-            column=column_name, type=type_name, default_str=default_str))
-    db.refresh()
-    return getattr(table, column_name)
-
-
-def remove_column(column):
-    """Remove column from table."""
-    col = column.property.columns[0]
-    t = col.table
-    with db.cursor() as cur:
-        cur.execute("""
-            ALTER TABLE {schema}.{table}
-            DROP COLUMN {column};
-        """.format(schema=t.schema, table=t.name, column=col.name))
-    db.refresh()
-
-
-def exec_sql(query, params=None):
-    """Execute SQL query."""
-    with db.cursor() as cur:
-        cur.execute(query, params)
-
-
-def db_to_query(orm):
-    """Convert table or list of ORM objects to a query."""
-    if isinstance(orm, Query):
-        # Assume input is Query object.
-        return orm
-    elif hasattr(orm, '__iter__'):
-        # Assume input is list of ORM objects.
-        with db.session() as sess:
-            return sess.query(*orm)
-    else:
-        # Assume input is single ORM object.
-        with db.session() as sess:
-            return sess.query(orm)
-
-
-def db_to_db(query, name, schema=None, view=False):
-    """
-    Create a table or view from Query, table, or ORM objects, like columns.
-
-    Do not use to duplicate a table. The new table will not contain
-    indexes or constraints, including primary keys.
-
-    Parameters
-    ----------
-    query : sqlalchemy.orm.Query, sqlalchemy.ext.declarative.DeclarativeMeta,
-            or iterable
-        Query ORM object, table ORM class, or list of ORM objects to query,
-        like columns.
-    name : str
-        Name of table or view to create.
-    schema : schema class, optional
-        Schema of table to create. Defaults to public.
-    view : bool, optional
-        Whether to create a view instead of a table. Defaults to False.
-
-    Returns
-    -------
-    None
-
-    """
-    if schema:
-        schema_name = schema.__name__
-    else:
-        schema_name = 'public'
-    qualified_name = schema_name + "." + name
-
-    q = db_to_query(query)
-
-    # Create new table from results of the query.
-    with db.session() as sess:
-        sess.execute(CreateTableAs(qualified_name, q, view))
-    db.refresh()
-
-
-def db_to_df(query, index_name=None):
-    """
-    Return DataFrame from Query, table, or ORM objects, like columns.
-
-    Parameters
-    ----------
-    query : sqlalchemy.orm.Query, sqlalchemy.ext.declarative.DeclarativeMeta,
-            or iterable
-        Query ORM object, table ORM class, or list of ORM objects to query,
-        like columns.
-    index_name : str, optional
-        Name of column to use as DataFrame index. If provided, column
-        must be contained in query.
-
-    Returns
-    -------
-    df : pandas.DataFrame
-
-    """
-    q = db_to_query(query)
-
-    # Convert Query object to DataFrame.
-    entities = q.column_descriptions
-    if (len(entities) == 1 and
-            isinstance(entities[0]['type'], DeclarativeMeta)):
-        # If we query a table, column_descriptions refers to the table itself,
-        # not its columns.
-        table = q.column_descriptions[0]['type']
-        column_names = table.__table__.columns.keys()
-    else:
-        column_names = [desc['name'] for desc in q.column_descriptions]
-    data = [rec.__dict__ for rec in q.all()]
-    df = pd.DataFrame.from_records(data, index=index_name,
-                                   columns=column_names, coerce_float=True)
-    return df
-
-
-def reproject(table=None, column=None):
-    """
-    Reproject table into the SRID specified in the project config.
+    Reproject table into the specified SRID.
 
     Either a table or a column must be specified. If a table is specified,
     the geom column will be reprojected.
 
     Parameters
     ----------
+    srid : int
+        Spatial Reference System Identifier (SRID).
     table : sqlalchemy.ext.declarative.DeclarativeMeta, optional
         Table ORM class containing geom column to reproject.
     column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
@@ -706,8 +527,6 @@ def reproject(table=None, column=None):
     None
 
     """
-    project_srid = DataLoader().srid
-
     # Get Table and Column objects.
     if column:
         geom = column.property.columns[0]
@@ -717,30 +536,32 @@ def reproject(table=None, column=None):
         geom = t.c.geom
 
     # Reproject using ST_Transform if column SRID differs from project SRID.
-    if project_srid != geom.type.srid:
+    if srid != geom.type.srid:
         with db.cursor() as cur:
             cur.execute("""
                 ALTER TABLE {schema}.{table}
-                ALTER COLUMN {g_name} TYPE geometry({g_type}, {psrid})
-                USING ST_Transform({g_name}, {psrid});
+                ALTER COLUMN {g_name} TYPE geometry({g_type}, {srid})
+                USING ST_Transform({g_name}, {srid});
             """.format(
                 schema=t.schema, table=t.name,
                 g_name=geom.name, g_type=geom.type.geometry_type,
-                psrid=project_srid))
+                srid=srid))
     else:
         logger.warn("Table {table} already in SRID {srid}".format(
-            table=t.name, srid=project_srid))
+            table=t.name, srid=srid))
 
     # Refresh ORM.
     db.refresh()
 
 
-def conform_srids(schema=None):
+def conform_srids(srid, schema=None):
     """
-    Reproject all non-conforming geometry columns into project SRID.
+    Reproject all non-conforming geometry columns into the specified SRID.
 
     Parameters
     ----------
+    srid : int
+        Spatial Reference System Identifier (SRID).
     schema : schema class
         If schema is specified, only SRIDs within the specified schema
         are conformed.
@@ -750,8 +571,6 @@ def conform_srids(schema=None):
     None
 
     """
-    project_srid = DataLoader().srid
-
     # Iterate over all columns. Reproject geometry columns with SRIDs
     # that differ from project SRID.
     for schema_name, schema_obj in db.tables.__dict__.items():
@@ -763,144 +582,7 @@ def conform_srids(schema=None):
                             if isinstance(c.type, Geometry):
                                 # Column is geometry column. Reproject if SRID
                                 # differs from project SRID.
-                                srid = c.type.srid
-                                if srid != project_srid:
+                                current_srid = c.type.srid
+                                if srid != current_srid:
                                     column = getattr(table, c.name)
-                                    reproject(table, column)
-
-
-def vacuum(table):
-    """
-    VACUUM and then ANALYZE table.
-
-    VACUUM reclaims storage from deleted or obselete tuples.
-    ANALYZE updates statistics used by the query planner to determine the most
-    efficient way to execute a query.
-
-    Parameters
-    ----------
-    table : sqlalchemy.ext.declarative.DeclarativeMeta
-        Table ORM class to vacuum.
-
-    Returns
-    -------
-    None
-
-    """
-    # Vacuum
-    t = table.__table__
-    with db.connection() as conn:
-        assert conn.autocommit is False
-        conn.autocommit = True
-        try:
-            with conn.cursor() as cur:
-                cur.execute("VACUUM ANALYZE {schema}.{table};".format(
-                    schema=t.schema, table=t.name))
-        finally:
-            conn.autocommit = False
-
-
-def load_delimited_file(file_path, table_name, delimiter=',', append=False):
-    """
-    Load a delimited file to the database.
-
-    Parameters
-    ----------
-    file_path : str
-        The full path to the delimited file.
-    table_name : str
-        The name given to the table on the database or the table to append to.
-    delimiter : str, optional
-        The delimiter symbol used in the input file. Defaults to ','.
-        Other examples include tab delimited '\t' and
-        vertical bar delimited '|'.
-    append: boolean, optional
-        Determines whether a new table is created (dropping existing table
-        if exists) or rows are appended to existing table.
-        If append=True, table schemas must be identical.
-
-    Returns
-    -------
-    None
-        Loads delimited file to database
-
-    """
-    delimited_file = pd.read_csv(file_path, delimiter=delimiter)
-    dtypes = pd.Series(list(delimited_file.dtypes))
-    dtypes[dtypes == 'object'] = 'character varying'
-    dtypes[dtypes == 'int64'] = 'integer'
-    dtypes[dtypes == 'int32'] = 'integer'
-    dtypes[dtypes == 'float64'] = 'float'
-    cols = pd.Series(list(delimited_file.columns))
-    cols = cols.str.replace(' ', '_')
-    cols = cols.str.replace('\'', '')
-    cols = cols.str.replace('\"', '')
-    cols = cols.str.replace('\(', '')
-    cols = cols.str.replace('\)', '')
-    cols = cols.str.replace('\+', '')
-    cols = cols.str.replace('\:', '')
-    cols = cols.str.replace('\;', '')
-    columns = ''
-    for col, tp in zip(list(cols), list(dtypes)):
-        columns = columns + col + ' ' + tp + ','
-    columns = columns[:-1]
-    if not append:
-        exec_sql("DROP TABLE IF EXISTS {table};".format(table=table_name))
-        exec_sql("CREATE TABLE {table} ({cols});".format(
-            table=table_name, cols=columns))
-    exec_sql("SET CLIENT_ENCODING='LATIN1';")
-    exec_sql(
-        "COPY {table} FROM '{file}' DELIMITER '{delim}' CSV HEADER;".format(
-            table=table_name, file=file_path, delim=delimiter))
-
-
-def load_multiple_delimited_files(files, config_filename=None):
-    """
-     Load multiple delimited text files to Postgres according to a given dictionary
-    of file information.
-
-    Parameters
-    ----------
-    files : dict
-        Dictionary of dictionaries where the top-level key is file category,
-        which also corresponds to the name of the directory within the data_dir
-        containing this category of files. The sub-dictionaries are
-        dictionaries where the keys correspond to the geography name and the
-        value is a tuple of the form (file_name, table_name, delimiter).  If SRID is
-        None, then default config SRID is used.
-
-        Example dictionary
-             {'parcels' :  ##Looks for 'parcels' directory within the data_dir
-                  ##Looks for 'marin' directory within parcels dir
-                  {'alameda':('alameda_parcel_info.txt', 'alameda_pcl_info', '\t'),
-                  'napa':('napa_parcel_info.csv', 'napa_pcl_info', ','),
-                  }
-             }
-    config_filename : str, optional
-        Path to additional configuration file.
-        If None, configuration must be provided in default locations.
-        Configuration should specify the input data directory (data_dir).
-        The data_dir should contain subdirectories corresponding to each
-        shapefile category, which in turn should contain a subdirectory
-        for each shapefile.
-
-    Returns
-    -------
-    None : None
-        Loads delimited files to the database (returns nothing)
-
-    """
-    def subpath(base_dir):
-        def func(shp_table_name, shp_path):
-            input_dir = base_dir
-            return os.path.join(DataLoader().directory, input_dir, shp_table_name, shp_path)
-        return func
-    for category in files:
-        path_func = subpath(category)
-        del_dict = files[category]
-        for name in del_dict:
-            path = path_func(name, del_dict[name][0])
-            table_name = del_dict[name][1]
-            delimiter = del_dict[name][2]
-            print('Loading %s as %s' % (del_dict[name][0], table_name))
-            load_delimited_file(path, table_name, delimiter=delimiter)
+                                    reproject(srid, table, column)

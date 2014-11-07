@@ -18,7 +18,7 @@ with open(readme, 'r') as f:
 setup(
     name='spandex',
     version='0.1dev',
-    description='Spatial Analysis and Data Exploration',
+    description='Spatial Analysis and Data Extraction',
     long_description=long_description,
     author='Synthicity',
     author_email='ejanowicz@synthicity.com',

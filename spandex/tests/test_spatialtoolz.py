@@ -1,7 +1,7 @@
 import numpy as np
 from sqlalchemy import func
 
-from spandex import spatialtoolz
+from spandex import db_to_df, spatialtoolz
 
 # Sanity checks for spatialtoolz. These tests don't ensure correct results,
 # but rather check that results "make sense" and are within bounds.
@@ -27,7 +27,7 @@ def get_srids(loader):
 def get_tables(loader):
     """Build list of table ORM classes."""
     tables = []
-    for (key, value) in loader.database.tables.sample.__dict__.items():
+    for (key, value) in loader.tables.sample.__dict__.items():
         if not key.startswith('_'):
             tables.append(value)
     assert len(tables) > 1
@@ -36,15 +36,15 @@ def get_tables(loader):
 
 def test_tag(loader):
     # Tag parcels with block group ID.
-    parcels = loader.database.tables.sample.heather_farms
-    bg = loader.database.tables.sample.hf_bg
+    parcels = loader.tables.sample.heather_farms
+    bg = loader.tables.sample.hf_bg
     assert not hasattr(parcels, 'bg_id')
     spatialtoolz.tag(parcels, 'bg_id', bg, 'objectid')
     assert hasattr(parcels, 'bg_id')
 
     # Build DataFrame from parcels and block groups tables.
-    parcels_df = spatialtoolz.db_to_df(parcels, index_name='parcel_id')
-    bg_df = spatialtoolz.db_to_df(bg, index_name='objectid')
+    parcels_df = db_to_df(parcels, index_name='parcel_id')
+    bg_df = db_to_df(bg, index_name='objectid')
 
     # Assert that all parcels have integer block groups.
     assert not parcels_df.bg_id.isnull().any()
@@ -60,8 +60,8 @@ def test_tag(loader):
 
 def test_proportion_overlap(loader):
     # Calculate proportion of each parcel overlapped by water.
-    parcels = loader.database.tables.sample.heather_farms
-    water = loader.database.tables.sample.hf_water
+    parcels = loader.tables.sample.heather_farms
+    water = loader.tables.sample.hf_water
     assert not hasattr(parcels, 'proportion_water')
     spatialtoolz.proportion_overlap(parcels, water, 'proportion_water')
     assert hasattr(parcels, 'proportion_water')
@@ -69,7 +69,7 @@ def test_proportion_overlap(loader):
     # Build DataFrame from columns of parcels table.
     columns = [parcels.parcel_id, parcels.geom.ST_Area(),
                parcels.proportion_water]
-    parcels_df = spatialtoolz.db_to_df(columns, index_name='parcel_id')
+    parcels_df = db_to_df(columns, index_name='parcel_id')
 
     # Assert that proportion overlap values are between 0 and 1.
     assert parcels_df.proportion_water.dtype == float
@@ -98,8 +98,8 @@ def test_trim(loader):
             )
         return q.scalar()
 
-    parcels = loader.database.tables.sample.heather_farms
-    water = loader.database.tables.sample.hf_water
+    parcels = loader.tables.sample.heather_farms
+    water = loader.tables.sample.hf_water
 
     # Assert that some parcel areas overlap water.
     assert calc_overlap(parcels.geom, water.geom) > 0
@@ -147,7 +147,7 @@ def test_trim(loader):
 def test_invalid(loader):
     # There are currently no invalid geometries in the sample data, so this
     # is not a great test.
-    parcels = loader.database.tables.sample.heather_farms
+    parcels = loader.tables.sample.heather_farms
     invalid = spatialtoolz.geom_invalid(parcels, parcels.parcel_id)
     assert invalid.empty
     invalid = spatialtoolz.geom_invalid(parcels)
