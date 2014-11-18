@@ -553,6 +553,63 @@ def reproject(srid, table=None, column=None):
     db.refresh()
 
 
+def validate(table=None, column=None):
+    """
+    Attempt to fix invalid geometries.
+
+    Either a table or a column must be specified. If a table is specified,
+    the geom column will be validated.
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta, optional
+        Table ORM class containing geom column to validate.
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
+        Column ORM object to validate.
+
+    Returns
+    -------
+    None
+
+    """
+    # Get Table and Column objects.
+    if column:
+        geom = column.property.columns[0]
+        t = geom.table
+    else:
+        t = table.__table__
+        geom = t.c.geom
+
+    # Get column data and geometry type.
+    data_type = geom.type
+    geom_type = data_type.geometry_type
+    if "point" in geom_type.lower():
+        geom_type_num = 1
+    elif "linestring" in geom_type.lower():
+        geom_type_num = 2
+    elif "polygon" in geom_type.lower():
+        geom_type_num = 3
+    else:
+        geom_type_num = None
+
+    with db.session() as sess:
+        # Fix geometries using ST_MakeValid. If geometry type is
+        # point/linestring/polygon, only extract elements of those types,
+        # to prevent invalid data type errors.
+        if geom_type_num:
+            valid_geom = func.ST_CollectionExtract(
+                func.ST_MakeValid(geom),
+                geom_type_num
+            )
+        else:
+            valid_geom = func.ST_MakeValid(geom)
+        sess.query(t).filter(
+            ~geom.ST_IsValid()
+        ).update(
+            {geom: valid_geom}, synchronize_session=False
+        )
+
+
 def conform_srids(srid, schema=None):
     """
     Reproject all non-conforming geometry columns into the specified SRID.
