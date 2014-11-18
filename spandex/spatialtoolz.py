@@ -338,8 +338,7 @@ def geom_invalid(table, index=None):
 
     """
     # Build list of columns to return, including optional index.
-    columns = [func.ST_IsSimple(table.geom).label('simple'),
-               func.ST_IsValidReason(table.geom).label('reason'),
+    columns = [func.ST_IsValidReason(table.geom).label('reason'),
                table.geom]
     if index:
         columns.append(index)
