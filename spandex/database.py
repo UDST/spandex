@@ -89,9 +89,7 @@ class database(object):
                 if (not schema_name.startswith('pg_') and
                         schema_name != 'information_schema'):
                     # Assign each reflected schema as an attribute.
-                    cls._model.metadata.reflect(schema=schema_name,
-                                                extend_existing=True,
-                                                autoload_replace=True)
+                    cls._model.metadata.reflect(schema=schema_name)
                     if not hasattr(cls.tables, schema_name):
                         schema = type(str(schema_name), (object,),
                                       {'__doc__':
