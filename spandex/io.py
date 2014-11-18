@@ -154,6 +154,24 @@ class TableLoader(object):
         """Close managed PostgreSQL connection(s)."""
         return self.database.close()
 
+    def get_path(self, filename):
+        """
+        Get the absolute path to a file in the data directory.
+
+        Parameters
+        ----------
+        filename: str
+            File path, relative to the data directory.
+
+        Returns
+        -------
+        filepath : str
+            Absolute file path.
+
+        """
+        filepath = os.path.join(self.directory, filename)
+        return filepath
+
     def get_encoding(self, filename):
         """Identify shapefile attribute table encoding.
 
@@ -168,7 +186,7 @@ class TableLoader(object):
 
         """
         # Read encoding from shapefile cpg and cst file.
-        filepath = os.path.join(self.directory, filename)
+        filepath = self.get_path(filename)
         encoding = None
         for extension in ['.cpg', '.cst']:
             encoding_filepath = os.path.splitext(filepath)[0] + extension
@@ -210,7 +228,7 @@ class TableLoader(object):
 
         """
         # Read projection information from shapefile prj file.
-        filepath = os.path.join(self.directory, filename)
+        filepath = self.get_path(filename)
         prj_filepath = os.path.splitext(filepath)[0] + '.prj'
         try:
             with open(prj_filepath) as prj_file:
@@ -292,7 +310,7 @@ class TableLoader(object):
                       creating one. Defaults to False.
 
         """
-        filepath = os.path.join(self.directory, filename)
+        filepath = self.get_path(filename)
 
         # Make sure that shapefile exists and is readable.
         with open(filepath):
