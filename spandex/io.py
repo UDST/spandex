@@ -401,7 +401,7 @@ class TableFrame(object):
     similar to key and attribute access on a pandas DataFrame.
     These DataFrame-like operations are supported:
 
-        my_tableframe = TableFrame(table, index_name='gid')
+        my_tableframe = TableFrame(table, index_col='gid')
         my_series1 = my_tableframe['col1']
         my_dataframe = my_tableframe[['col1', 'col2']]
         my_series2 = my_tableframe.col2
@@ -422,7 +422,7 @@ class TableFrame(object):
     ----------
     table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to wrap.
-    index_name : str
+    index_col : str
         Name of column to use as DataFrame and Series index.
     cache : bool
         Whether to cache columns as they are queried.
@@ -437,10 +437,10 @@ class TableFrame(object):
         DataFrame and Series index
 
     """
-    def __init__(self, table, index_name=None, cache=False):
+    def __init__(self, table, index_col=None, cache=False):
         super(TableFrame, self).__init__()
         super(TableFrame, self).__setattr__('_table', table)
-        super(TableFrame, self).__setattr__('_index_name', index_name)
+        super(TableFrame, self).__setattr__('_index_col', index_col)
         super(TableFrame, self).__setattr__('cache', cache)
         super(TableFrame, self).__setattr__('_cached', {})
         super(TableFrame, self).__setattr__('_index', pd.Index([]))
@@ -452,10 +452,10 @@ class TableFrame(object):
     @property
     def index(self):
         if not self.cache or len(self._index) == 0:
-            if self._index_name:
-                index_column = getattr(self._table, self._index_name)
+            if self._index_col:
+                index_column = getattr(self._table, self._index_col)
                 index = db_to_df(index_column,
-                                 index_name=self._index_name).index
+                                 index_col=self._index_col).index
             else:
                 self._index = pd.Index(range(len(self)))
             super(TableFrame, self).__setattr__('_index', index)
@@ -507,8 +507,8 @@ class TableFrame(object):
 
         if query_columns:
             # Query uncached columns including column used as index.
-            query_columns.append(self._index_name)
-            query_df = db_to_df(query_columns, index_name=self._index_name)
+            query_columns.append(self._index_col)
+            query_df = db_to_df(query_columns, index_col=self._index_col)
             if self.cache:
                 # Join queried columns to cached columns.
                 df = pd.concat([query_df] + cached, axis=1, copy=False)
@@ -574,7 +574,7 @@ def update_df(df, column, table):
         q = sess.query(index_column, column)
 
     # Update DataFrame column.
-    new_df = db_to_df(q, index_name=df.index.name)
+    new_df = db_to_df(q, index_col=df.index.name)
     df[column.name] = new_df[column.name]
     return df
 
@@ -693,7 +693,7 @@ def db_to_db(query, table_name, schema=None, view=False, pk='id'):
     db.refresh()
 
 
-def db_to_df(query, index_name=None):
+def db_to_df(query, index_col=None):
     """
     Return DataFrame from Query, table, or ORM objects, like columns.
 
@@ -703,7 +703,7 @@ def db_to_df(query, index_name=None):
             or iterable
         Query ORM object, table ORM class, or list of ORM objects to query,
         like columns.
-    index_name : str, optional
+    index_col : str, optional
         Name of column to use as DataFrame index. If provided, column
         must be contained in query.
 
@@ -725,7 +725,7 @@ def db_to_df(query, index_name=None):
     else:
         column_names = [desc['name'] for desc in q.column_descriptions]
     data = [rec.__dict__ for rec in q.all()]
-    df = pd.DataFrame.from_records(data, index=index_name,
+    df = pd.DataFrame.from_records(data, index=index_col,
                                    columns=column_names, coerce_float=True)
     return df
 

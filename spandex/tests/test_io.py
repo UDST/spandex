@@ -10,7 +10,7 @@ from spandex.io import db_to_df, df_to_db
 def test_tableframe(loader):
     table = loader.tables.sample.hf_bg
     for cache in [False, True]:
-        tf = TableFrame(table, index_name='gid', cache=cache)
+        tf = TableFrame(table, index_col='gid', cache=cache)
         assert isinstance(tf.index, pd.Index)
         num_rows = len(tf)
         assert num_rows > 1
@@ -37,7 +37,7 @@ def test_sim_export(loader):
 
     # Register input parcels table.
     parcels = loader.tables.sample.heather_farms
-    parcels_in = TableFrame(parcels, index_name='gid')
+    parcels_in = TableFrame(parcels, index_col='gid')
     sim.add_table('parcels_in', parcels_in, copy=False)
 
     # Register output parcels table.
@@ -78,6 +78,6 @@ def test_sim_export(loader):
     # Export table to database and import back to compare.
     sim.run(['export'])
     parcels_out_table = loader.tables.sample.parcels_out
-    parcels_out_df2 = db_to_df(parcels_out_table, index_name='parcel_id')
+    parcels_out_df2 = db_to_df(parcels_out_table, index_col='parcel_id')
     pdt.assert_frame_equal(parcels_out_df1[column_names],
                            parcels_out_df2[column_names])
