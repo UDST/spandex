@@ -610,7 +610,7 @@ def validate(table=None, column=None):
         )
 
 
-def conform_srids(srid, schema=None):
+def conform_srids(srid, schema=None, fix=False):
     """
     Reproject all non-conforming geometry columns into the specified SRID.
 
@@ -618,9 +618,11 @@ def conform_srids(srid, schema=None):
     ----------
     srid : int
         Spatial Reference System Identifier (SRID).
-    schema : schema class
+    schema : schema class, optional
         If schema is specified, only SRIDs within the specified schema
         are conformed.
+    fix : bool, optional
+        Whether to report and attempt to fix invalid geometries.
 
     Returns
     -------
@@ -636,8 +638,18 @@ def conform_srids(srid, schema=None):
                     if not table_name.startswith('_'):
                         for c in table.__table__.columns:
                             if isinstance(c.type, Geometry):
-                                # Column is geometry column. Reproject if SRID
-                                # differs from project SRID.
+                                # Fix geometry if asked to do so.
+                                if fix:
+                                    if c.name == 'geom':
+                                        invalid_df = geom_invalid(table)
+                                        if not invalid_df.empty:
+                                            logger.warn(invalid_df)
+                                            validate(table=table)
+                                    else:
+                                        validate(column=getattr(table,
+                                                                c.name))
+
+                                # Reproject if SRID differs from project SRID.
                                 current_srid = c.type.srid
                                 if srid != current_srid:
                                     column = getattr(table, c.name)
