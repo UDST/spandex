@@ -724,7 +724,7 @@ def db_to_df(query, index_col=None):
         column_names = table.__table__.columns.keys()
     else:
         column_names = [desc['name'] for desc in q.column_descriptions]
-    data = [rec.__dict__ for rec in q.all()]
+    data = (rec.__dict__ for rec in q.all())
     df = pd.DataFrame.from_records(data, index=index_col,
                                    columns=column_names, coerce_float=True)
     return df
