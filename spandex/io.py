@@ -6,7 +6,7 @@ import subprocess
 import pandas as pd
 import psycopg2
 from six import string_types
-from six.moves import cStringIO, urllib
+from six.moves import cStringIO, range, urllib
 from sqlalchemy import func
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Query
@@ -64,6 +64,7 @@ class TableLoader(object):
     Methods:
         duplicate:       Duplicate a PostgreSQL table, including indexes.
         close:           Close managed PostgreSQL connection(s).
+        get_attributes:  Export shapefile attributes as a pandas DataFrame.
         get_encoding:    Identify shapefile attribute encoding.
         get_srid:        Identify shapefile EPSG SRID.
         load_shp:        Load a shapefile into a PostGIS table.
@@ -171,6 +172,28 @@ class TableLoader(object):
         """
         filepath = os.path.join(self.directory, filename)
         return filepath
+
+    def get_attributes(self, filename):
+        """
+        Export shapefile attributes as a pandas DataFrame.
+
+        Uses OGR's ESRI Shapefile driver to read records from the file.
+
+        Parameters
+        ----------
+        filename : str
+            Shapefile or dBase/xBase file, relative to the data directory.
+
+        Returns
+        -------
+        df : pd.DataFrame
+
+        """
+        splitext = os.path.splitext(filename)
+        if splitext[1].lower() == '.shp':
+            filename = splitext[0] + '.dbf'
+        filepath = self.get_path(filename)
+        return dbf_to_df(filepath)
 
     def get_encoding(self, filename):
         """Identify shapefile attribute table encoding.
@@ -753,6 +776,58 @@ def df_to_db(df, table_name, schema=None, pk='id'):
                 ALTER TABLE {} ADD COLUMN {} serial PRIMARY KEY;
             """.format(qualified_name, pk))
     db.refresh()
+
+
+def dbf_to_df(path):
+    """
+    Return DataFrame from attributes stored in dBase/xBase format.
+
+    Uses OGR's ESRI Shapefile driver to read records from the file.
+
+    Parameters
+    ----------
+    path : str
+        File path to the dBase/xBase file.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+
+    """
+    import ogr
+
+    # Open the file and collect information on fields.
+    dbf = ogr.Open(path)
+    table = dbf.GetLayer()
+    header = table.GetLayerDefn()
+    ncolumns = header.GetFieldCount()
+    column_names = [header.GetFieldDefn(i).GetName() for i in range(ncolumns)]
+    column_types = [header.GetFieldDefn(i).GetType() for i in range(ncolumns)]
+
+    def read(row, i):
+        """Return i-th field of a record."""
+        # For performance, use the appropriate field type function.
+        fld_type = column_types[i]
+        if fld_type == ogr.OFTInteger:
+            return row.GetFieldAsInteger(i)
+        elif fld_type == ogr.OFTReal:
+            return row.GetFieldAsDouble(i)
+        elif fld_type == ogr.OFTStringList:
+            return row.GetFieldAsStringList(i)
+        elif fld_type == ogr.OFTIntegerList:
+            return row.GetFieldAsIntegerList(i)
+        elif fld_type == ogr.OFTRealList:
+            return row.GetFieldAsDoubleList(i)
+        else:
+            return row.GetFieldAsString(i)
+
+    # Represent records with memory-efficient generators.
+    values = lambda row: (read(row, i) for i in range(ncolumns))
+    records = (values(row) for row in table)
+
+    df = pd.DataFrame.from_records(records, columns=column_names,
+                                   coerce_float=True)
+    return df
 
 
 def vacuum(table):
