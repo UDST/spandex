@@ -754,6 +754,9 @@ def db_to_df(query, index_col=None):
 
 
 def df_to_db(df, table_name, schema=None, pk='id'):
+    # Does not sanitize DataFrame input. Will fail if values contain
+    # the escape character, backslash (\). Binary format COPY would be
+    # faster and might be more robust.
     if schema:
         schema_name = schema.__name__
         qualified_name = "{}.{}".format(schema_name, table_name)
