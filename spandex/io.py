@@ -480,7 +480,7 @@ class TableFrame(object):
                 index = db_to_df(index_column,
                                  index_col=self._index_col).index
             else:
-                self._index = pd.Index(range(len(self)))
+                index = pd.Index(range(len(self)))
             super(TableFrame, self).__setattr__('_index', index)
         return self._index
 
@@ -530,7 +530,8 @@ class TableFrame(object):
 
         if query_columns:
             # Query uncached columns including column used as index.
-            query_columns.append(self._index_col)
+            if self._index_col:
+                query_columns.append(self._index_col)
             query_df = db_to_df(query_columns, index_col=self._index_col)
             if self.cache:
                 # Join queried columns to cached columns.
