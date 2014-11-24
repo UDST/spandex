@@ -830,7 +830,7 @@ def dbf_to_df(path):
     records = (values(row) for row in table)
 
     df = pd.DataFrame.from_records(records, columns=column_names,
-                                   coerce_float=True)
+                                   coerce_float=False)
     return df
 
 
