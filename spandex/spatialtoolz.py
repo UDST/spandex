@@ -353,7 +353,7 @@ def geom_invalid(table, index=None):
 
     # Convert query to DataFrame.
     if index:
-        df = io.db_to_df(q, index_name=index.name)
+        df = io.db_to_df(q, index_col=index.name)
     else:
         df = io.db_to_df(q)
     return df

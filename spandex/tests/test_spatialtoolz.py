@@ -45,8 +45,8 @@ def test_tag(loader):
     assert hasattr(parcels, 'bg_id')
 
     # Build DataFrame from parcels and block groups tables.
-    parcels_df = db_to_df(parcels, index_name='parcel_id')
-    bg_df = db_to_df(bg, index_name='objectid')
+    parcels_df = db_to_df(parcels, index_col='parcel_id')
+    bg_df = db_to_df(bg, index_col='objectid')
 
     # Assert that all parcels have integer block groups.
     assert not parcels_df.bg_id.isnull().any()
@@ -71,7 +71,7 @@ def test_proportion_overlap(loader):
     # Build DataFrame from columns of parcels table.
     columns = [parcels.parcel_id, parcels.geom.ST_Area(),
                parcels.proportion_water]
-    parcels_df = db_to_df(columns, index_name='parcel_id')
+    parcels_df = db_to_df(columns, index_col='parcel_id')
 
     # Assert that proportion overlap values are between 0 and 1.
     assert parcels_df.proportion_water.dtype == float
