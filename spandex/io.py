@@ -738,7 +738,7 @@ def db_to_df(query, index_col=None):
     """
     q = db_to_query(query)
 
-    # Convert Query object to DataFrame.
+    # Get list of column names.
     entities = q.column_descriptions
     if (len(entities) == 1 and
             isinstance(entities[0]['type'], DeclarativeMeta)):
@@ -748,9 +748,14 @@ def db_to_df(query, index_col=None):
         column_names = table.__table__.columns.keys()
     else:
         column_names = [desc['name'] for desc in q.column_descriptions]
+
+    # Convert Query object to DataFrame.
     data = (rec.__dict__ for rec in q.all())
-    df = pd.DataFrame.from_records(data, index=index_col,
-                                   columns=column_names, coerce_float=True)
+    df = pd.DataFrame.from_records(data, columns=column_names,
+                                   coerce_float=True)
+
+    if index_col:
+        df.set_index(index_col, inplace=True)
     return df
 
 
