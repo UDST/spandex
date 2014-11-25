@@ -32,14 +32,15 @@ def column(table_name, fillna=None, astype=None, groupby=None, agg=None):
     return decorated
 
 
-def plot(table_names):
+def plot(table_names=None):
     """
     Plot relationships between columns and tables using Graphviz.
 
     Parameters
     ----------
-    table_names : iterable of str
+    table_names : iterable of str, optional
         Names of UrbanSim registered tables to plot.
+        Defaults to all registered tables.
 
     Returns
     -------
@@ -47,6 +48,10 @@ def plot(table_names):
         PyGraphviz graph object.
 
     """
+    if not table_names:
+        # Default to all registered tables.
+        table_names = simulation.list_tables()
+
     graph = AGraph(directed=True)
     graph.graph_attr['fontname'] = 'Sans'
     graph.graph_attr['fontsize'] = 28
@@ -57,7 +62,8 @@ def plot(table_names):
 
     # Add each registered table as a subgraph with columns as nodes.
     for table_name in table_names:
-        subgraph = graph.add_subgraph(label=table_name, fontcolor='red')
+        subgraph = graph.add_subgraph(name='cluster_' + table_name,
+                                      label=table_name, fontcolor='red')
         table = simulation.get_table(table_name)
         for column_name in table.columns:
             full_name = table_name + '.' + column_name
