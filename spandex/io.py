@@ -445,9 +445,9 @@ class TableFrame(object):
     ----------
     table : sqlalchemy.ext.declarative.DeclarativeMeta
         Table ORM class to wrap.
-    index_col : str
+    index_col : str, optional
         Name of column to use as DataFrame and Series index.
-    cache : bool
+    cache : bool, optional
         Whether to cache columns as they are queried.
 
     Attributes
@@ -460,7 +460,7 @@ class TableFrame(object):
         DataFrame and Series index
 
     """
-    def __init__(self, table, index_col=None, cache=False):
+    def __init__(self, table, index_col=None, cache=True):
         super(TableFrame, self).__init__()
         super(TableFrame, self).__setattr__('_table', table)
         super(TableFrame, self).__setattr__('_index_col', index_col)
