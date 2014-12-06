@@ -37,6 +37,7 @@ setup(
     ],
     extras_require={
         'gdal': ['GDAL>=1.7'],     # Python 3 support.
+        'plot': ['pygraphviz'],
         'sim': ['urbansim>=1.3'],  # TableFrame support and sim.table caching.
     }
 )
