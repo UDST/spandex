@@ -36,6 +36,7 @@ setup(
         'SQLAlchemy>=0.8'      # GeoAlchemy2 support.
     ],
     extras_require={
-        'prj': ['GDAL>=1.7'],  # Python 3 support.
+        'gdal': ['GDAL>=1.7'],     # Python 3 support.
+        'sim': ['urbansim>=1.3'],  # TableFrame support and sim.table caching.
     }
 )
