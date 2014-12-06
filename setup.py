@@ -37,7 +37,5 @@ setup(
     ],
     extras_require={
         'prj': ['GDAL>=1.7'],  # Python 3 support.
-        'rastertoolz': ['numpy>=1.8.0', 'rasterio>=0.12', 'rasterstats>=0.4',
-                        'shapely>=1.3.2']
     }
 )
