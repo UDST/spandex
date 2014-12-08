@@ -6,7 +6,7 @@ import subprocess
 import pandas as pd
 import psycopg2
 from six import string_types
-from six.moves import urllib
+from six.moves import cStringIO, range, urllib
 from sqlalchemy import func
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import Query
@@ -64,6 +64,7 @@ class TableLoader(object):
     Methods:
         duplicate:       Duplicate a PostgreSQL table, including indexes.
         close:           Close managed PostgreSQL connection(s).
+        get_attributes:  Export shapefile attributes as a pandas DataFrame.
         get_encoding:    Identify shapefile attribute encoding.
         get_srid:        Identify shapefile EPSG SRID.
         load_shp:        Load a shapefile into a PostGIS table.
@@ -154,6 +155,46 @@ class TableLoader(object):
         """Close managed PostgreSQL connection(s)."""
         return self.database.close()
 
+    def get_path(self, filename):
+        """
+        Get the absolute path to a file in the data directory.
+
+        Parameters
+        ----------
+        filename: str
+            File path, relative to the data directory.
+
+        Returns
+        -------
+        filepath : str
+            Absolute file path.
+
+        """
+        filepath = os.path.join(self.directory, filename)
+        return filepath
+
+    def get_attributes(self, filename):
+        """
+        Export shapefile attributes as a pandas DataFrame.
+
+        Uses OGR's ESRI Shapefile driver to read records from the file.
+
+        Parameters
+        ----------
+        filename : str
+            Shapefile or dBase/xBase file, relative to the data directory.
+
+        Returns
+        -------
+        df : pd.DataFrame
+
+        """
+        splitext = os.path.splitext(filename)
+        if splitext[1].lower() == '.shp':
+            filename = splitext[0] + '.dbf'
+        filepath = self.get_path(filename)
+        return dbf_to_df(filepath)
+
     def get_encoding(self, filename):
         """Identify shapefile attribute table encoding.
 
@@ -168,7 +209,7 @@ class TableLoader(object):
 
         """
         # Read encoding from shapefile cpg and cst file.
-        filepath = os.path.join(self.directory, filename)
+        filepath = self.get_path(filename)
         encoding = None
         for extension in ['.cpg', '.cst']:
             encoding_filepath = os.path.splitext(filepath)[0] + extension
@@ -210,7 +251,7 @@ class TableLoader(object):
 
         """
         # Read projection information from shapefile prj file.
-        filepath = os.path.join(self.directory, filename)
+        filepath = self.get_path(filename)
         prj_filepath = os.path.splitext(filepath)[0] + '.prj'
         try:
             with open(prj_filepath) as prj_file:
@@ -292,7 +333,7 @@ class TableLoader(object):
                       creating one. Defaults to False.
 
         """
-        filepath = os.path.join(self.directory, filename)
+        filepath = self.get_path(filename)
 
         # Make sure that shapefile exists and is readable.
         with open(filepath):
@@ -375,6 +416,159 @@ class TableLoader(object):
                 self.load_shp(table=table, **value)
 
 
+class TableFrame(object):
+    """
+    DataFrame-like object for read-only access to a database table.
+
+    TableFrame wraps a SQLAlchemy ORM table for queries using syntax
+    similar to key and attribute access on a pandas DataFrame.
+    These DataFrame-like operations are supported:
+
+        my_tableframe = TableFrame(table, index_col='gid')
+        my_series1 = my_tableframe['col1']
+        my_dataframe = my_tableframe[['col1', 'col2']]
+        my_series2 = my_tableframe.col2
+        num_rows = len(my_tableframe)
+
+    Caching is enabled by default. As columns are queried, they will
+    be cached as individual Series objects for future lookups.
+    The cache can be emptied by calling the `clear` method.
+    Caching can be enabled and disabled with the `cache` parameter or
+    by reassigning to the `cache` attribute.
+
+    Unlike a DataFrame, TableFrame is read-only.
+
+    TableFrame instances can be registered as tables in the
+    UrbanSim simulation framework using the `sim.add_table` function.
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta
+        Table ORM class to wrap.
+    index_col : str, optional
+        Name of column to use as DataFrame and Series index.
+    cache : bool, optional
+        Whether to cache columns as they are queried.
+
+    Attributes
+    ----------
+    cache : bool
+        Whether caching is enabled. Can be reassigned to enable/disable.
+    columns : list of str
+        List of column names in database table.
+    index : pandas.Index
+        DataFrame and Series index
+
+    """
+    def __init__(self, table, index_col=None, cache=True):
+        super(TableFrame, self).__init__()
+        super(TableFrame, self).__setattr__('_table', table)
+        super(TableFrame, self).__setattr__('_index_col', index_col)
+        super(TableFrame, self).__setattr__('cache', cache)
+        super(TableFrame, self).__setattr__('_cached', {})
+        super(TableFrame, self).__setattr__('_index', pd.Index([]))
+
+    @property
+    def columns(self):
+        return self._table.__table__.columns.keys()
+
+    @property
+    def index(self):
+        if not self.cache or len(self._index) == 0:
+            if self._index_col:
+                index_column = getattr(self._table, self._index_col)
+                index = db_to_df(index_column,
+                                 index_col=self._index_col).index
+            else:
+                index = pd.Index(range(len(self)))
+            super(TableFrame, self).__setattr__('_index', index)
+        return self._index
+
+    def clear(self):
+        """Clear column cache."""
+        self._cached.clear()
+
+    def copy(self):
+        """Object is read-only, so the same object is returned."""
+        return self
+
+    def __dir__(self):
+        """Support IPython tab-completion of column names."""
+        return self.__dict__.keys() + self.columns
+
+    def __getitem__(self, key):
+        """
+        Return column(s) as a pandas Series or DataFrame.
+
+        Like pandas, if the key is an iterable, a DataFrame will be
+        returned containing the column(s) named in the iterable.
+        Otherwise a Series will be returned.
+
+        """
+        # Collect column name(s).
+        if hasattr(key, '__iter__') and not isinstance(key, string_types):
+            # Argument is list-like. Later return DataFrame.
+            return_dataframe = True
+            column_names = key
+        else:
+            # Argument is scalar. Later return Series.
+            return_dataframe = False
+            column_names = [key]
+
+        if self.cache:
+            # Collect cached columns and exclude from query.
+            cached = []
+            query_columns = []
+            for name in column_names:
+                if name in self._cached:
+                    cached.append(self._cached[name])
+                else:
+                    query_columns.append(getattr(self._table, name))
+        else:
+            # Caching disabled, so query all columns.
+            query_columns = [getattr(self._table, n) for n in column_names]
+
+        if query_columns:
+            # Query uncached columns including column used as index.
+            if self._index_col:
+                query_columns.append(self._index_col)
+            query_df = db_to_df(query_columns, index_col=self._index_col)
+            if self.cache:
+                # Join queried columns to cached columns.
+                df = pd.concat([query_df] + cached, axis=1, copy=False)
+                for (column_name, series) in query_df.iteritems():
+                    self._cached[column_name] = series
+            else:
+                # Caching disabled, so no join.
+                df = query_df
+        else:
+            # All columns were cached, so join them.
+            df = pd.concat(cached, axis=1, copy=False)
+
+        if return_dataframe:
+            # Return DataFrame with specified column order.
+            return df.reindex_axis(column_names, axis=1, copy=False)
+        else:
+            # Return Series.
+            return df[key]
+
+    def __getattr__(self, key):
+        """Return column as a pandas Series."""
+        return self.__getitem__(key)
+
+    def __len__(self):
+        """Calculate length from number of rows in database table."""
+        with db.session() as sess:
+            return sess.query(self._table).count()
+
+    def __setattr__(self, name, value):
+        """No attribute assignment, except to enable/disable cache."""
+        if name == 'cache':
+            super(TableFrame, self).__setattr__('cache', value)
+        else:
+            raise TypeError("TableFrame is read-only.")
+
+
 def update_df(df, column, table):
     """
     Add or update column in DataFrame from database table.
@@ -404,7 +598,7 @@ def update_df(df, column, table):
         q = sess.query(index_column, column)
 
     # Update DataFrame column.
-    new_df = db_to_df(q, index_name=df.index.name)
+    new_df = db_to_df(q, index_col=df.index.name)
     df[column.name] = new_df[column.name]
     return df
 
@@ -470,7 +664,7 @@ def db_to_query(orm):
     if isinstance(orm, Query):
         # Assume input is Query object.
         return orm
-    elif hasattr(orm, '__iter__'):
+    elif hasattr(orm, '__iter__') and not isinstance(orm, string_types):
         # Assume input is list of ORM objects.
         with db.session() as sess:
             return sess.query(*orm)
@@ -480,12 +674,12 @@ def db_to_query(orm):
             return sess.query(orm)
 
 
-def db_to_db(query, name, schema=None, view=False):
+def db_to_db(query, table_name, schema=None, view=False, pk='id'):
     """
     Create a table or view from Query, table, or ORM objects, like columns.
 
     Do not use to duplicate a table. The new table will not contain
-    indexes or constraints, including primary keys.
+    the same indexes or constraints.
 
     Parameters
     ----------
@@ -493,7 +687,7 @@ def db_to_db(query, name, schema=None, view=False):
             or iterable
         Query ORM object, table ORM class, or list of ORM objects to query,
         like columns.
-    name : str
+    table_name : str
         Name of table or view to create.
     schema : schema class, optional
         Schema of table to create. Defaults to public.
@@ -509,17 +703,21 @@ def db_to_db(query, name, schema=None, view=False):
         schema_name = schema.__name__
     else:
         schema_name = 'public'
-    qualified_name = schema_name + "." + name
+    qualified_name = schema_name + "." + table_name
 
     q = db_to_query(query)
 
     # Create new table from results of the query.
     with db.session() as sess:
         sess.execute(CreateTableAs(qualified_name, q, view))
+        if pk:
+            sess.execute("""
+                ALTER TABLE {} ADD COLUMN {} serial PRIMARY KEY;
+            """.format(qualified_name, pk))
     db.refresh()
 
 
-def db_to_df(query, index_name=None):
+def db_to_df(query, index_col=None):
     """
     Return DataFrame from Query, table, or ORM objects, like columns.
 
@@ -529,7 +727,7 @@ def db_to_df(query, index_name=None):
             or iterable
         Query ORM object, table ORM class, or list of ORM objects to query,
         like columns.
-    index_name : str, optional
+    index_col : str, optional
         Name of column to use as DataFrame index. If provided, column
         must be contained in query.
 
@@ -540,7 +738,7 @@ def db_to_df(query, index_name=None):
     """
     q = db_to_query(query)
 
-    # Convert Query object to DataFrame.
+    # Get list of column names.
     entities = q.column_descriptions
     if (len(entities) == 1 and
             isinstance(entities[0]['type'], DeclarativeMeta)):
@@ -550,9 +748,94 @@ def db_to_df(query, index_name=None):
         column_names = table.__table__.columns.keys()
     else:
         column_names = [desc['name'] for desc in q.column_descriptions]
-    data = [rec.__dict__ for rec in q.all()]
-    df = pd.DataFrame.from_records(data, index=index_name,
-                                   columns=column_names, coerce_float=True)
+
+    # Convert Query object to DataFrame.
+    data = (rec.__dict__ for rec in q.all())
+    df = pd.DataFrame.from_records(data, columns=column_names,
+                                   coerce_float=True)
+
+    if index_col:
+        df.set_index(index_col, inplace=True)
+    return df
+
+
+def df_to_db(df, table_name, schema=None, pk='id'):
+    # Does not sanitize DataFrame input. Will fail if values contain
+    # the escape character, backslash (\). Binary format COPY would be
+    # faster and might be more robust.
+    if schema:
+        schema_name = schema.__name__
+        qualified_name = "{}.{}".format(schema_name, table_name)
+    else:
+        schema_name = None
+        qualified_name = table_name
+    empty_df = df.iloc[[0]]
+    with db.cursor() as cur:
+        empty_df.to_sql(table_name, db._engine, schema=schema_name,
+                        index=True, if_exists='replace')
+        cur.execute("DELETE FROM {}".format(qualified_name))
+        buf = cStringIO()
+        df.to_csv(buf, sep='\t', na_rep=r'\N', header=False, index=True)
+        buf.seek(0)
+        cur.copy_from(buf, qualified_name,
+                      columns=tuple([df.index.name] +
+                                    df.columns.values.tolist()))
+        if pk:
+            cur.execute("""
+                ALTER TABLE {} ADD COLUMN {} serial PRIMARY KEY;
+            """.format(qualified_name, pk))
+    db.refresh()
+
+
+def dbf_to_df(path):
+    """
+    Return DataFrame from attributes stored in dBase/xBase format.
+
+    Uses OGR's ESRI Shapefile driver to read records from the file.
+
+    Parameters
+    ----------
+    path : str
+        File path to the dBase/xBase file.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+
+    """
+    import ogr
+
+    # Open the file and collect information on fields.
+    dbf = ogr.Open(path)
+    table = dbf.GetLayer()
+    header = table.GetLayerDefn()
+    ncolumns = header.GetFieldCount()
+    column_names = [header.GetFieldDefn(i).GetName() for i in range(ncolumns)]
+    column_types = [header.GetFieldDefn(i).GetType() for i in range(ncolumns)]
+
+    def read(row, i):
+        """Return i-th field of a record."""
+        # For performance, use the appropriate field type function.
+        fld_type = column_types[i]
+        if fld_type == ogr.OFTInteger:
+            return row.GetFieldAsInteger(i)
+        elif fld_type == ogr.OFTReal:
+            return row.GetFieldAsDouble(i)
+        elif fld_type == ogr.OFTStringList:
+            return row.GetFieldAsStringList(i)
+        elif fld_type == ogr.OFTIntegerList:
+            return row.GetFieldAsIntegerList(i)
+        elif fld_type == ogr.OFTRealList:
+            return row.GetFieldAsDoubleList(i)
+        else:
+            return row.GetFieldAsString(i)
+
+    # Represent records with memory-efficient generators.
+    values = lambda row: (read(row, i) for i in range(ncolumns))
+    records = (values(row) for row in table)
+
+    df = pd.DataFrame.from_records(records, columns=column_names,
+                                   coerce_float=False)
     return df
 
 

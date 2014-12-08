@@ -338,8 +338,7 @@ def geom_invalid(table, index=None):
 
     """
     # Build list of columns to return, including optional index.
-    columns = [func.ST_IsSimple(table.geom).label('simple'),
-               func.ST_IsValidReason(table.geom).label('reason'),
+    columns = [func.ST_IsValidReason(table.geom).label('reason'),
                table.geom]
     if index:
         columns.append(index)
@@ -354,7 +353,7 @@ def geom_invalid(table, index=None):
 
     # Convert query to DataFrame.
     if index:
-        df = io.db_to_df(q, index_name=index.name)
+        df = io.db_to_df(q, index_col=index.name)
     else:
         df = io.db_to_df(q)
     return df
@@ -554,7 +553,64 @@ def reproject(srid, table=None, column=None):
     db.refresh()
 
 
-def conform_srids(srid, schema=None):
+def validate(table=None, column=None):
+    """
+    Attempt to fix invalid geometries.
+
+    Either a table or a column must be specified. If a table is specified,
+    the geom column will be validated.
+
+    Parameters
+    ----------
+    table : sqlalchemy.ext.declarative.DeclarativeMeta, optional
+        Table ORM class containing geom column to validate.
+    column : sqlalchemy.orm.attributes.InstrumentedAttribute, optional
+        Column ORM object to validate.
+
+    Returns
+    -------
+    None
+
+    """
+    # Get Table and Column objects.
+    if column:
+        geom = column.property.columns[0]
+        t = geom.table
+    else:
+        t = table.__table__
+        geom = t.c.geom
+
+    # Get column data and geometry type.
+    data_type = geom.type
+    geom_type = data_type.geometry_type
+    if "point" in geom_type.lower():
+        geom_type_num = 1
+    elif "linestring" in geom_type.lower():
+        geom_type_num = 2
+    elif "polygon" in geom_type.lower():
+        geom_type_num = 3
+    else:
+        geom_type_num = None
+
+    with db.session() as sess:
+        # Fix geometries using ST_MakeValid. If geometry type is
+        # point/linestring/polygon, only extract elements of those types,
+        # to prevent invalid data type errors.
+        if geom_type_num:
+            valid_geom = func.ST_CollectionExtract(
+                func.ST_MakeValid(geom),
+                geom_type_num
+            )
+        else:
+            valid_geom = func.ST_MakeValid(geom)
+        sess.query(t).filter(
+            ~geom.ST_IsValid()
+        ).update(
+            {geom: valid_geom}, synchronize_session=False
+        )
+
+
+def conform_srids(srid, schema=None, fix=False):
     """
     Reproject all non-conforming geometry columns into the specified SRID.
 
@@ -562,9 +618,11 @@ def conform_srids(srid, schema=None):
     ----------
     srid : int
         Spatial Reference System Identifier (SRID).
-    schema : schema class
+    schema : schema class, optional
         If schema is specified, only SRIDs within the specified schema
         are conformed.
+    fix : bool, optional
+        Whether to report and attempt to fix invalid geometries.
 
     Returns
     -------
@@ -580,8 +638,18 @@ def conform_srids(srid, schema=None):
                     if not table_name.startswith('_'):
                         for c in table.__table__.columns:
                             if isinstance(c.type, Geometry):
-                                # Column is geometry column. Reproject if SRID
-                                # differs from project SRID.
+                                # Fix geometry if asked to do so.
+                                if fix:
+                                    if c.name == 'geom':
+                                        invalid_df = geom_invalid(table)
+                                        if not invalid_df.empty:
+                                            logger.warn(invalid_df)
+                                            validate(table=table)
+                                    else:
+                                        validate(column=getattr(table,
+                                                                c.name))
+
+                                # Reproject if SRID differs from project SRID.
                                 current_srid = c.type.srid
                                 if srid != current_srid:
                                     column = getattr(table, c.name)
