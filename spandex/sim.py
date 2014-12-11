@@ -1,6 +1,5 @@
 import logging
 
-from decorator import decorator
 from urbansim.sim import simulation
 
 
