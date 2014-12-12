@@ -769,6 +769,7 @@ def df_to_db(df, table_name, schema=None, pk='id'):
     else:
         schema_name = None
         qualified_name = table_name
+    df.columns = [s.lower() for s in df.columns]
     empty_df = df.iloc[[0]]
     with db.cursor() as cur:
         empty_df.to_sql(table_name, db._engine, schema=schema_name,
