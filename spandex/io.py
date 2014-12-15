@@ -363,7 +363,8 @@ class TableLoader(object):
                                                  '-W', encoding,
                                                  filepath, table],
                                                 stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE)
+                                                stderr=subprocess.PIPE,
+                                                universal_newlines=True)
                 try:
                     command = b""
                     for line in create_table.stdout:
@@ -381,7 +382,8 @@ class TableLoader(object):
                                             '-W', encoding,
                                             filepath, table],
                                            stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE)
+                                           stderr=subprocess.PIPE,
+                                           universal_newlines=True)
             try:
                 while True:
                     line = append_data.stdout.readline()
