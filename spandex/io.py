@@ -371,9 +371,9 @@ class TableLoader(object):
                                          line.startswith(b"COMMIT")):
                             command += line
                     cur.execute(command)
+                    create_table.wait()
                 finally:
                     logf(logging.WARN, create_table.stderr)
-                create_table.wait()
 
             # Append data to existing or newly-created table.
             append_data = subprocess.Popen(['shp2pgsql', '-a', '-D', '-I',
@@ -388,9 +388,9 @@ class TableLoader(object):
                     if line.startswith(b"COPY"):
                         break
                 cur.copy_expert(line, append_data.stdout)
+                append_data.wait()
             finally:
                 logf(logging.WARN, append_data.stderr)
-            append_data.wait()
 
         # Refresh ORM.
         self.database.refresh()
