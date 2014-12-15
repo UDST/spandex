@@ -366,10 +366,10 @@ class TableLoader(object):
                                                 stderr=subprocess.PIPE,
                                                 universal_newlines=True)
                 try:
-                    command = b""
+                    command = ""
                     for line in create_table.stdout:
-                        if line and not (line.startswith(b"BEGIN") or
-                                         line.startswith(b"COMMIT")):
+                        if line and not (line.startswith("BEGIN") or
+                                         line.startswith("COMMIT")):
                             command += line
                     cur.execute(command)
                     create_table.wait()
@@ -387,7 +387,7 @@ class TableLoader(object):
             try:
                 while True:
                     line = append_data.stdout.readline()
-                    if line.startswith(b"COPY"):
+                    if line.startswith("COPY"):
                         break
                 cur.copy_expert(line, append_data.stdout)
                 append_data.wait()
