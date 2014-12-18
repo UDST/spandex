@@ -1,8 +1,8 @@
 import logging
 
 from geoalchemy2 import Geometry
-from sqlalchemy import func
-from sqlalchemy.orm import aliased
+from sqlalchemy import func, or_
+from sqlalchemy.orm import aliased, class_mapper
 
 from . import io
 from .database import database as db
@@ -377,16 +377,24 @@ def geom_duplicate(table):
     table_a = aliased(table)
     table_b = aliased(table)
 
+    # Get primary key of table and table aliases.
+    pk = class_mapper(table).primary_key[0]
+    table_a_pk = getattr(table_a, pk.name)
+    table_b_pk = getattr(table_b, pk.name)
+
     # Query rows with duplicate geometries.
     with db.session() as sess:
-        geoms = sess.query(
-            table_a.geom
+        dups = sess.query(
+            table_a_pk.label('a'), table_b_pk.label('b')
         ).filter(
-            table_a.gid < table_b.gid,
+            table_a_pk < table_b_pk,
             func.ST_Equals(table_a.geom, table_b.geom)
         )
         rows = sess.query(table).filter(
-            table.geom.in_(geoms)
+            or_(
+                pk.in_(dups.selectable.with_only_columns([table_a_pk])),
+                pk.in_(dups.selectable.with_only_columns([table_b_pk]))
+            )
         )
 
     # Convert query to DataFrame.

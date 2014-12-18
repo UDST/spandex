@@ -33,12 +33,11 @@ def test_tableframe(loader):
 def test_sim_export(loader):
     # Try importing the UrbanSim simulation framework, otherwise skip test.
     sim = pytest.importorskip('urbansim.sim.simulation')
-    from spandex.sim import column
 
     # Register input parcels table.
     parcels = loader.tables.sample.heather_farms
     parcels_in = TableFrame(parcels, index_col='gid')
-    sim.add_table('parcels_in', parcels_in, copy=False)
+    sim.add_table('parcels_in', parcels_in, copy_col=False)
 
     # Register output parcels table.
     @sim.table()
@@ -46,22 +45,20 @@ def test_sim_export(loader):
         return pd.DataFrame(index=parcels_in.parcel_id)
 
     # Specify default table for output columns as decorator.
-    def out(*args, **kwargs):
-        return column(table_name='parcels_out', groupby=parcels_in.parcel_id,
-                      *args, **kwargs)
+    out = sim.column('parcels_out')
 
     # Specify some output columns.
-    @out(astype=str, agg='first')
+    @out
     def apn(apn='parcels_in.puid'):
-        return apn
+        return apn.groupby(parcels_in.parcel_id).first().astype(str)
 
-    @out()
+    @out
     def county_id():
         return 13
 
-    @out(astype=float, agg='median')
+    @out
     def area(acr='parcels_in.parcel_acr'):
-        return 4047. * acr
+        return 4047. * acr.groupby(parcels_in.parcel_id).median()
 
     # Register model to export output table to database.
     @sim.model()

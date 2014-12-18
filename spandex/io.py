@@ -363,12 +363,13 @@ class TableLoader(object):
                                                  '-W', encoding,
                                                  filepath, table],
                                                 stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE)
+                                                stderr=subprocess.PIPE,
+                                                universal_newlines=True)
                 try:
-                    command = b""
+                    command = ""
                     for line in create_table.stdout:
-                        if line and not (line.startswith(b"BEGIN") or
-                                         line.startswith(b"COMMIT")):
+                        if line and not (line.startswith("BEGIN") or
+                                         line.startswith("COMMIT")):
                             command += line
                     cur.execute(command)
                 finally:
@@ -381,11 +382,12 @@ class TableLoader(object):
                                             '-W', encoding,
                                             filepath, table],
                                            stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE)
+                                           stderr=subprocess.PIPE,
+                                           universal_newlines=True)
             try:
                 while True:
                     line = append_data.stdout.readline()
-                    if line.startswith(b"COPY"):
+                    if line.startswith("COPY"):
                         break
                 cur.copy_expert(line, append_data.stdout)
             finally:
@@ -769,6 +771,7 @@ def df_to_db(df, table_name, schema=None, pk='id'):
     else:
         schema_name = None
         qualified_name = table_name
+    df.columns = [s.lower() for s in df.columns]
     empty_df = df.iloc[[0]]
     with db.cursor() as cur:
         empty_df.to_sql(table_name, db._engine, schema=schema_name,

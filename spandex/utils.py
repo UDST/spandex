@@ -45,8 +45,8 @@ def logf(level, f):
     for line in f:
         line = line.strip()
         if line:
-            if (line.startswith(b"Shapefile type: ") or
-                    line.startswith(b"Postgis type: ")):
+            if (line.startswith("Shapefile type: ") or
+                    line.startswith("Postgis type: ")):
                 # Send usual shp2pgsql stderr messages to debug log.
                 logger.debug(line)
             else:
