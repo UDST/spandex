@@ -33,7 +33,7 @@ setup(
         'pandas>=0.15.0',      # pandas.Index.difference.
         'psycopg2>=2.5',       # connection and cursor context managers.
         'six>=1.4',            # Mapping for urllib.
-        'SQLAlchemy>=0.8'      # GeoAlchemy2 support.
+        'SQLAlchemy==0.8'      # GeoAlchemy2 support.
     ],
     extras_require={
         'gdal': ['GDAL>=1.7'],     # Python 3 support.
