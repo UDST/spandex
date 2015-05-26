@@ -109,7 +109,7 @@ class database(object):
                               '__doc__': "Reflected GeoAlchemy table."})
             except ArgumentError as e:
                 # Warn and skip if unable to map table to class.
-                logger.warn('Unable to map table to class: {}'.format(e))
+                # logger.warn('Unable to map table to class: {}'.format(e))
                 continue
 
             if hasattr(schema, table_name):
