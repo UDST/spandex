@@ -20,9 +20,9 @@ setup(
     version='0.1dev',
     description='Spatial Analysis and Data Extraction',
     long_description=long_description,
-    author='Synthicity',
-    author_email='ejanowicz@synthicity.com',
-    url='https://github.com/synthicity/spandex',
+    author='Autodesk',
+    author_email='udst@autodesk.com',
+    url='https://github.com/udst/spandex',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Programming Language :: Python :: 2.7',
