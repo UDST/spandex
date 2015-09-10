@@ -54,3 +54,6 @@ docs/_build/
 
 # IPython Notebook checkpoints
 .ipynb_checkpoints
+
+# local user configs
+config/
