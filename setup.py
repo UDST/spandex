@@ -20,8 +20,8 @@ setup(
     version='0.1dev',
     description='Spatial Analysis and Data Extraction',
     long_description=long_description,
-    author='Autodesk',
-    author_email='udst@autodesk.com',
+    author='UrbanSim Inc.',
+    author_email='udst@urbansim.com',
     url='https://github.com/udst/spandex',
     classifiers=[
         'Development Status :: 4 - Beta',
