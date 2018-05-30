@@ -153,6 +153,11 @@ def _remove_rows_by_count(df, amount, count):
     sort_count = df[count].sort_values(ascending=False, inplace=False)
     sort_count = sort_count[(sort_count <= amount) & (sort_count != 0)]
 
+    if len(sort_count) == 0:
+        #Issue XX. The value count in the available rows in df are bigger than amount
+        #Temporary solution: do nothing (don't remove)
+        return df
+    
     to_remove = []
 
     for k, v in sort_count.iteritems():
@@ -210,6 +215,10 @@ def _add_rows_by_count(df, amount, count, alloc_id, constraint, stuff=False):
         if len(sort_count) == 0:
             # see if we can pop the most recent thing off to_add
             # and try again with a smaller number.
+            if len(to_add) == 0:
+                #Issue XX when the count value in the available rows is bigger than amount
+                #Temporary solution: Do nothing (no adding)
+                return df
             k = to_add.pop()
             v = orig_sort_count[k]
             amount += v
@@ -349,8 +358,10 @@ def synthesize_one(
     # calculate constraints by comparing geo constraint values and the
     # current occupancy levels.
     # start with current occupancy
-    occupancy = df[alloc_id].value_counts()
-
+    if not count:
+        occupancy = df[alloc_id].value_counts()
+    elif count:
+        occupancy = df.groupby(alloc_id).agg({count: 'sum'})
     # get the total container limits
     if constraint_expr:
         container_size = geo_df.eval(constraint_expr)
