@@ -154,7 +154,7 @@ def _remove_rows_by_count(df, amount, count):
     sort_count = sort_count[(sort_count <= amount) & (sort_count != 0)]
 
     if len(sort_count) == 0:
-        #Issue XX. The value count in the available rows in df are bigger than amount
+        #Issue 59. The value count in the available rows in df are bigger than amount
         #Temporary solution: do nothing (don't remove)
         return df
     
@@ -216,7 +216,7 @@ def _add_rows_by_count(df, amount, count, alloc_id, constraint, stuff=False):
             # see if we can pop the most recent thing off to_add
             # and try again with a smaller number.
             if len(to_add) == 0:
-                #Issue XX when the count value in the available rows is bigger than amount
+                #Issue 59 when the count value in the available rows is bigger than amount
                 #Temporary solution: Do nothing (no adding)
                 return df
             k = to_add.pop()
