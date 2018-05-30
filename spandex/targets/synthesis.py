@@ -41,7 +41,7 @@ def _allocate_rows(rows_to_add, alloc_id, constraint, stuff=False):
                 rows_allocated = True
                 break
             else:
-                rows_to_add.set_value(idx, alloc_id, cstr_id)
+                rows_to_add.at[idx, alloc_id] = cstr_id
                 cstr_val -= 1
 
     if not rows_allocated:
@@ -60,7 +60,7 @@ def _allocate_rows(rows_to_add, alloc_id, constraint, stuff=False):
             else:
                 cstr_id = None
 
-            rows_to_add.set_value(idx, alloc_id, cstr_id)
+            rows_to_add.at[idx, alloc_id] = cstr_id
 
 
 def _remove_rows(df, num):
