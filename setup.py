@@ -30,7 +30,7 @@ setup(
     packages=find_packages(exclude=['*.tests']),
     install_requires=[
         'GeoAlchemy2>=0.2.1',  # Bug fix for schemas other than public.
-        'pandas>=0.15.0',      # pandas.Index.difference.
+        'pandas>=0.17.0',      # pandas.Index.difference.
         'psycopg2>=2.5',       # connection and cursor context managers.
         'six>=1.4',            # Mapping for urllib.
         'SQLAlchemy==0.9.9'      # GeoAlchemy2 support.
